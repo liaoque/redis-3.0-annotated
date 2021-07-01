@@ -9,7 +9,7 @@ start_server {
         foreach entry $entries { r sadd $key $entry }
     }
 
-    test {SADD, SCARD, SISMEMBER, SMEMBERS basics - regular set} {
+    test {SADD, SCARD, SISMEMBER, SMISMEMBER, SMEMBERS basics - regular set} {
         create_set myset {foo}
         assert_encoding hashtable myset
         assert_equal 1 [r sadd myset bar]
@@ -18,10 +18,15 @@ start_server {
         assert_equal 1 [r sismember myset foo]
         assert_equal 1 [r sismember myset bar]
         assert_equal 0 [r sismember myset bla]
+        assert_equal {1} [r smismember myset foo]
+        assert_equal {1 1} [r smismember myset foo bar]
+        assert_equal {1 0} [r smismember myset foo bla]
+        assert_equal {0 1} [r smismember myset bla foo]
+        assert_equal {0} [r smismember myset bla]
         assert_equal {bar foo} [lsort [r smembers myset]]
     }
 
-    test {SADD, SCARD, SISMEMBER, SMEMBERS basics - intset} {
+    test {SADD, SCARD, SISMEMBER, SMISMEMBER, SMEMBERS basics - intset} {
         create_set myset {17}
         assert_encoding intset myset
         assert_equal 1 [r sadd myset 16]
@@ -30,7 +35,31 @@ start_server {
         assert_equal 1 [r sismember myset 16]
         assert_equal 1 [r sismember myset 17]
         assert_equal 0 [r sismember myset 18]
+        assert_equal {1} [r smismember myset 16]
+        assert_equal {1 1} [r smismember myset 16 17]
+        assert_equal {1 0} [r smismember myset 16 18]
+        assert_equal {0 1} [r smismember myset 18 16]
+        assert_equal {0} [r smismember myset 18]
         assert_equal {16 17} [lsort [r smembers myset]]
+    }
+
+    test {SMISMEMBER against non set} {
+        r lpush mylist foo
+        assert_error WRONGTYPE* {r smismember mylist bar}
+    }
+
+    test {SMISMEMBER non existing key} {
+        assert_equal {0} [r smismember myset1 foo]
+        assert_equal {0 0} [r smismember myset1 foo bar]
+    }
+
+    test {SMISMEMBER requires one or more members} {
+        r del zmscoretest
+        r zadd zmscoretest 10 x
+        r zadd zmscoretest 20 y
+        
+        catch {r smismember zmscoretest} e
+        assert_match {*ERR*wrong*number*arg*} $e
     }
 
     test {SADD against non set} {
@@ -49,6 +78,7 @@ start_server {
         create_set myset {213244124402402314402033402}
         assert_encoding hashtable myset
         assert_equal 1 [r sismember myset 213244124402402314402033402]
+        assert_equal {1} [r smismember myset 213244124402402314402033402]
     }
 
     test "SADD overflows the maximum allowed integers in an intset" {
@@ -293,6 +323,13 @@ start_server {
             assert_equal 0 [r scard myset]
         }
 
+        test "SPOP with <count>=1 - $type" {
+            create_set myset $contents
+            assert_encoding $type myset
+            assert_equal $contents [lsort [list [r spop myset 1] [r spop myset 1] [r spop myset 1]]]
+            assert_equal 0 [r scard myset]
+        }
+
         test "SRANDMEMBER - $type" {
             create_set myset $contents
             unset -nocomplain myset
@@ -302,6 +339,68 @@ start_server {
             }
             assert_equal $contents [lsort [array names myset]]
         }
+    }
+
+    foreach {type contents} {
+        hashtable {a b c d e f g h i j k l m n o p q r s t u v w x y z} 
+        intset {1 10 11 12 13 14 15 16 17 18 19 2 20 21 22 23 24 25 26 3 4 5 6 7 8 9}
+    } {
+        test "SPOP with <count>" {
+            create_set myset $contents
+            assert_encoding $type myset
+            assert_equal $contents [lsort [concat [r spop myset 11] [r spop myset 9] [r spop myset 0] [r spop myset 4] [r spop myset 1] [r spop myset 0] [r spop myset 1] [r spop myset 0]]]
+            assert_equal 0 [r scard myset]
+        }
+    }
+
+    # As seen in intsetRandomMembers
+    test "SPOP using integers, testing Knuth's and Floyd's algorithm" {
+        create_set myset {1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20}
+        assert_encoding intset myset
+        assert_equal 20 [r scard myset]
+        r spop myset 1
+        assert_equal 19 [r scard myset]
+        r spop myset 2
+        assert_equal 17 [r scard myset]
+        r spop myset 3
+        assert_equal 14 [r scard myset]
+        r spop myset 10
+        assert_equal 4 [r scard myset]
+        r spop myset 10
+        assert_equal 0 [r scard myset]
+        r spop myset 1
+        assert_equal 0 [r scard myset]
+    } {}
+
+    test "SPOP using integers with Knuth's algorithm" {
+        r spop nonexisting_key 100
+    } {}
+
+    test "SPOP new implementation: code path #1" {
+        set content {1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20}
+        create_set myset $content
+        set res [r spop myset 30]
+        assert {[lsort $content] eq [lsort $res]}
+    }
+
+    test "SPOP new implementation: code path #2" {
+        set content {1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20}
+        create_set myset $content
+        set res [r spop myset 2]
+        assert {[llength $res] == 2}
+        assert {[r scard myset] == 18}
+        set union [concat [r smembers myset] $res]
+        assert {[lsort $union] eq [lsort $content]}
+    }
+
+    test "SPOP new implementation: code path #3" {
+        set content {1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20}
+        create_set myset $content
+        set res [r spop myset 18]
+        assert {[llength $res] == 18}
+        assert {[r scard myset] == 2}
+        set union [concat [r smembers myset] $res]
+        assert {[lsort $union] eq [lsort $content]}
     }
 
     test "SRANDMEMBER with <count> against non existing key" {
@@ -402,7 +501,7 @@ start_server {
                 set iterations 1000
                 while {$iterations != 0} {
                     incr iterations -1
-                    set res [r srandmember myset -10]
+                    set res [r srandmember myset $size]
                     foreach ele $res {
                         set auxset($ele) 1
                     }
@@ -412,6 +511,45 @@ start_server {
                     }
                 }
                 assert {$iterations != 0}
+            }
+        }
+    }
+
+    foreach {type contents} {
+        hashtable {
+            1 5 10 50 125
+            MARY PATRICIA LINDA BARBARA ELIZABETH
+        }
+        intset {
+            0 1 2 3 4 5 6 7 8 9
+        }
+    } {
+        test "SRANDMEMBER histogram distribution - $type" {
+            create_set myset $contents
+            unset -nocomplain myset
+            array set myset {}
+            foreach ele [r smembers myset] {
+                set myset($ele) 1
+            }
+
+            # Use negative count (PATH 1).
+            # df = 9, 40 means 0.00001 probability
+            set res [r srandmember myset -1000]
+            assert_lessthan [chi_square_value $res] 40
+
+            # Use positive count (both PATH 3 and PATH 4).
+            foreach size {8 2} {
+                unset -nocomplain allkey
+                set iterations [expr {1000 / $size}]
+                while {$iterations != 0} {
+                    incr iterations -1
+                    set res [r srandmember myset $size]
+                    foreach ele $res {
+                        lappend allkey $ele
+                    }
+                }
+                # df = 9, 40 means 0.00001 probability
+                assert_lessthan [chi_square_value $allkey] 40
             }
         }
     }
@@ -450,6 +588,7 @@ start_server {
     test "SMOVE non existing key" {
         setup_move
         assert_equal 0 [r smove myset1 myset2 foo]
+        assert_equal 0 [r smove myset1 myset1 foo]
         assert_equal {1 a b} [lsort [r smembers myset1]]
         assert_equal {2 3 4} [lsort [r smembers myset2]]
     }

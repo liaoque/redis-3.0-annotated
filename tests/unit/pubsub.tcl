@@ -1,51 +1,19 @@
-start_server {tags {"pubsub"}} {
-    proc __consume_subscribe_messages {client type channels} {
-        set numsub -1
-        set counts {}
-
-        for {set i [llength $channels]} {$i > 0} {incr i -1} {
-            set msg [$client read]
-            assert_equal $type [lindex $msg 0]
-
-            # when receiving subscribe messages the channels names
-            # are ordered. when receiving unsubscribe messages
-            # they are unordered
-            set idx [lsearch -exact $channels [lindex $msg 1]]
-            if {[string match "*unsubscribe" $type]} {
-                assert {$idx >= 0}
-            } else {
-                assert {$idx == 0}
-            }
-            set channels [lreplace $channels $idx $idx]
-
-            # aggregate the subscription count to return to the caller
-            lappend counts [lindex $msg 2]
-        }
-
-        # we should have received messages for channels
-        assert {[llength $channels] == 0}
-        return $counts
-    }
-
-    proc subscribe {client channels} {
-        $client subscribe {*}$channels
-        __consume_subscribe_messages $client subscribe $channels
-    }
-
-    proc unsubscribe {client {channels {}}} {
-        $client unsubscribe {*}$channels
-        __consume_subscribe_messages $client unsubscribe $channels
-    }
-
-    proc psubscribe {client channels} {
-        $client psubscribe {*}$channels
-        __consume_subscribe_messages $client psubscribe $channels
-    }
-
-    proc punsubscribe {client {channels {}}} {
-        $client punsubscribe {*}$channels
-        __consume_subscribe_messages $client punsubscribe $channels
-    }
+start_server {tags {"pubsub network"}} {
+    test "Pub/Sub PING" {
+        set rd1 [redis_deferring_client]
+        subscribe $rd1 somechannel
+        # While subscribed to non-zero channels PING works in Pub/Sub mode.
+        $rd1 ping
+        $rd1 ping "foo"
+        set reply1 [$rd1 read]
+        set reply2 [$rd1 read]
+        unsubscribe $rd1 somechannel
+        # Now we are unsubscribed, PING should just return PONG.
+        $rd1 ping
+        set reply3 [$rd1 read]
+        $rd1 close
+        list $reply1 $reply2 $reply3
+    } {{pong {}} {pong foo} PONG}
 
     test "PUBLISH/SUBSCRIBE basics" {
         set rd1 [redis_deferring_client]
@@ -179,6 +147,10 @@ start_server {tags {"pubsub"}} {
         # clean up clients
         $rd1 close
     }
+
+    test "NUMSUB returns numbers, not strings (#1561)" {
+        r pubsub numsub abc def
+    } {abc 0 def 0}
 
     test "Mix SUBSCRIBE and PSUBSCRIBE" {
         set rd1 [redis_deferring_client]
