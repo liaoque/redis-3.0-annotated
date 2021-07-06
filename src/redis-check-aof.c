@@ -28,95 +28,81 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "fmacros.h"
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <unistd.h>
+#include "server.h"
 #include <sys/stat.h>
-#include "config.h"
 
 #define ERROR(...) { \
     char __buf[1024]; \
-    sprintf(__buf, __VA_ARGS__); \
-    sprintf(error, "0x%16llx: %s", (long long)epos, __buf); \
+    snprintf(__buf, sizeof(__buf), __VA_ARGS__); \
+    snprintf(error, sizeof(error), "0x%16llx: %s", (long long)epos, __buf); \
 }
 
-// ä¿å­˜é”™è¯¯ä¿¡æ¯
-static char error[1024];
-
-// æ–‡ä»¶è¯»å–çš„å½“å‰åç§»é‡
+// ±£´æ´íÎóĞÅÏ¢
+// ÎÄ¼ş¶ÁÈ¡µÄµ±Ç°Æ«ÒÆÁ¿
 static off_t epos;
+static long long line = 1;
 
 /*
- * ç¡®è®¤ buf æ˜¯ä»¥ \r\n ç»“å°¾çš„æ–°è¡Œã€‚
+ * È·ÈÏ buf ÊÇÒÔ \r\n ½áÎ²µÄĞÂĞĞ¡£
  *
- * ç¡®è®¤æˆåŠŸè¿”å› 1 ï¼Œè¯»å…¥å¤±è´¥è¿”å› 0 ï¼Œå¹¶æ‰“å°é”™è¯¯ä¿¡æ¯ã€‚
+ * È·ÈÏ³É¹¦·µ»Ø 1 £¬¶ÁÈëÊ§°Ü·µ»Ø 0 £¬²¢´òÓ¡´íÎóĞÅÏ¢¡£
  */
 int consumeNewline(char *buf) {
     if (strncmp(buf,"\r\n",2) != 0) {
         ERROR("Expected \\r\\n, got: %02x%02x",buf[0],buf[1]);
         return 0;
     }
+    line += 1;
     return 1;
 }
 
 /*
- * ä» fp ä¸­è¯»å…¥ä¸€ä¸ªä»¥ prefix ä¸ºå‰ç¼€çš„ long å€¼ï¼Œå¹¶å°†å®ƒä¿å­˜åˆ° *target ä¸­ã€‚
+ * ´Ó fp ÖĞ¶ÁÈëÒ»¸öÒÔ prefix ÎªÇ°×ºµÄ long Öµ£¬²¢½«Ëü±£´æµ½ *target ÖĞ¡£
  *
- * è¯»å…¥æˆåŠŸè¿”å› 1 ï¼Œè¯»å…¥å‡ºé”™è¿”å› 0 ï¼Œå¹¶æ‰“å°é”™è¯¯ä¿¡æ¯ã€‚
+ * ¶ÁÈë³É¹¦·µ»Ø 1 £¬¶ÁÈë³ö´í·µ»Ø 0 £¬²¢´òÓ¡´íÎóĞÅÏ¢¡£
  */
 int readLong(FILE *fp, char prefix, long *target) {
     char buf[128], *eptr;
-
     epos = ftello(fp);
-
-    // è¯»å…¥è¡Œ
+    // ¶ÁÈëĞĞ
     if (fgets(buf,sizeof(buf),fp) == NULL) {
         return 0;
     }
-
-    // ç¡®ä¿å‰ç¼€ç›¸åŒ
+    // È·±£Ç°×ºÏàÍ¬
     if (buf[0] != prefix) {
-        ERROR("Expected prefix '%c', got: '%c'",buf[0],prefix);
+        ERROR("Expected prefix '%c', got: '%c'",prefix,buf[0]);
         return 0;
     }
-
-    // å°†å­—ç¬¦ä¸²è½¬æ¢æˆ long å€¼
+    // ½«×Ö·û´®×ª»»³É long Öµ
     *target = strtol(buf+1,&eptr,10);
-
     return consumeNewline(eptr);
 }
 
 /*
- * ä» fp ä¸­è¯»å–æŒ‡å®šçš„å­—èŠ‚ï¼Œå¹¶å°†å€¼ä¿å­˜åˆ° *target ä¸­ã€‚
+ * ´Ó fp ÖĞ¶ÁÈ¡Ö¸¶¨µÄ×Ö½Ú£¬²¢½«Öµ±£´æµ½ *target ÖĞ¡£
  *
- * å¦‚æœè¯»å–çš„é‡å’Œ length å‚æ•°ä¸ç›¸åŒï¼Œé‚£ä¹ˆè¿”å› 0 ï¼Œå¹¶æ‰“å°é”™è¯¯ä¿¡æ¯ã€‚
- * è¯»å–æˆåŠŸåˆ™è¿”å› 1 ã€‚
+ * Èç¹û¶ÁÈ¡µÄÁ¿ºÍ length ²ÎÊı²»ÏàÍ¬£¬ÄÇÃ´·µ»Ø 0 £¬²¢´òÓ¡´íÎóĞÅÏ¢¡£
+ * ¶ÁÈ¡³É¹¦Ôò·µ»Ø 1 ¡£
  */
 int readBytes(FILE *fp, char *target, long length) {
     long real;
-
     epos = ftello(fp);
-
     real = fread(target,1,length,fp);
     if (real != length) {
         ERROR("Expected to read %ld bytes, got %ld bytes",length,real);
         return 0;
     }
-
     return 1;
 }
 
 /*
- * è¯»å–å­—ç¬¦ä¸²
+ * ¶ÁÈ¡×Ö·û´®
  *
- * è¯»å–æˆåŠŸå‡½æ•°è¿”å› 1 ï¼Œå¹¶å°†å€¼ä¿å­˜åœ¨ target æŒ‡é’ˆä¸­ã€‚
- * å¤±è´¥è¿”å› 0 ã€‚
+ * ¶ÁÈ¡³É¹¦º¯Êı·µ»Ø 1 £¬²¢½«Öµ±£´æÔÚ target Ö¸ÕëÖĞ¡£
+ * Ê§°Ü·µ»Ø 0 ¡£
  */
 int readString(FILE *fp, char** target) {
-
-    // è¯»å–å­—ç¬¦ä¸²çš„é•¿åº¦
+    // ¶ÁÈ¡×Ö·û´®µÄ³¤¶È
     long len;
     *target = NULL;
     if (!readLong(fp,'$',&len)) {
@@ -125,41 +111,36 @@ int readString(FILE *fp, char** target) {
 
     /* Increase length to also consume \r\n */
     len += 2;
-
-    // ä¸ºå­—ç¬¦ä¸²åˆ†é…ç©ºé—´
-    *target = (char*)malloc(len);
-
-    // è¯»å–å†…å®¹
+    // Îª×Ö·û´®·ÖÅä¿Õ¼ä
+    *target = (char*)zmalloc(len);
+    // ¶ÁÈ¡ÄÚÈİ
     if (!readBytes(fp,*target,len)) {
         return 0;
     }
-
-    // ç¡®è®¤ \r\n
+    // È·ÈÏ \r\n
     if (!consumeNewline(*target+len-2)) {
         return 0;
     }
-
     (*target)[len-2] = '\0';
-
     return 1;
 }
 
 /*
- * è¯»å–å‚æ•°æ•°é‡
+ * ¶ÁÈ¡²ÎÊıÊıÁ¿
  *
- * è¯»å–æˆåŠŸå‡½æ•°è¿”å› 1 ï¼Œå¹¶å°†å‚æ•°æ•°é‡ä¿å­˜åˆ° target ä¸­ã€‚
- * è¯»å–å¤±è´¥è¿”å› 0 ã€‚
+ * ¶ÁÈ¡³É¹¦º¯Êı·µ»Ø 1 £¬²¢½«²ÎÊıÊıÁ¿±£´æµ½ target ÖĞ¡£
+ * ¶ÁÈ¡Ê§°Ü·µ»Ø 0 ¡£
  */
 int readArgc(FILE *fp, long *target) {
     return readLong(fp,'*',target);
 }
 
 /*
- * è¿”å›ä¸€ä¸ªåç§»é‡ï¼Œè¿™ä¸ªåç§»é‡å¯èƒ½æ˜¯ï¼š
+ * ·µ»ØÒ»¸öÆ«ÒÆÁ¿£¬Õâ¸öÆ«ÒÆÁ¿¿ÉÄÜÊÇ£º
  *
- * 1ï¼‰æ–‡ä»¶çš„æœ«å°¾
- * 2ï¼‰æ–‡ä»¶é¦–æ¬¡å‡ºç°è¯»å…¥é”™è¯¯çš„åœ°æ–¹
- * 3ï¼‰æ–‡ä»¶ç¬¬ä¸€ä¸ªæ²¡æœ‰ EXEC åŒ¹é…çš„ MULTI çš„ä½ç½®
+ * 1£©ÎÄ¼şµÄÄ©Î²
+ * 2£©ÎÄ¼şÊ×´Î³öÏÖ¶ÁÈë´íÎóµÄµØ·½
+ * 3£©ÎÄ¼şµÚÒ»¸öÃ»ÓĞ EXEC Æ¥ÅäµÄ MULTI µÄÎ»ÖÃ
  */
 off_t process(FILE *fp) {
     long argc;
@@ -168,74 +149,67 @@ off_t process(FILE *fp) {
     char *str;
 
     while(1) {
-
-        // å®šä½åˆ°æœ€åä¸€ä¸ª MULTI å‡ºç°çš„åç§»é‡
+        // ¶¨Î»µ½×îºóÒ»¸ö MULTI ³öÏÖµÄÆ«ÒÆÁ¿
         if (!multi) pos = ftello(fp);
-
-        // è¯»å–å‚æ•°çš„ä¸ªæ•°
+        // ¶ÁÈ¡²ÎÊıµÄ¸öÊı
         if (!readArgc(fp, &argc)) break;
 
-        // éå†å„ä¸ªå‚æ•°
-        // å‚æ•°åŒ…æ‹¬å‘½ä»¤ä»¥åŠå‘½ä»¤å‚æ•°
-        // æ¯”å¦‚ SET key value 
-        // SET å°±æ˜¯ç¬¬ä¸€ä¸ªå‚æ•°ï¼Œè€Œ key å’Œ value å°±æ˜¯ç¬¬äºŒå’Œç¬¬ä¸‰ä¸ªå‚æ•°
+        // ±éÀú¸÷¸ö²ÎÊı
+        // ²ÎÊı°üÀ¨ÃüÁîÒÔ¼°ÃüÁî²ÎÊı
+        // ±ÈÈç SET key value 
+        // SET ¾ÍÊÇµÚÒ»¸ö²ÎÊı£¬¶ø key ºÍ value ¾ÍÊÇµÚ¶şºÍµÚÈı¸ö²ÎÊı
         for (i = 0; i < argc; i++) {
-
-            // è¯»å–å‚æ•°
+            // ¶ÁÈ¡²ÎÊı
             if (!readString(fp,&str)) break;
-
-            // æ£€æŸ¥å‘½ä»¤æ˜¯å¦ MULTI æˆ–è€… EXEC
+            // ¼ì²éÃüÁîÊÇ·ñ MULTI »òÕß EXEC
             if (i == 0) {
                 if (strcasecmp(str, "multi") == 0) {
-                    // è®°å½•ä¸€ä¸ª MULTI 
-                    // å¦‚æœå‰é¢å·²ç»æœ‰ä¸€ä¸ª MULTI ï¼Œé‚£ä¹ˆæŠ¥é”™ï¼ˆMULTI ä¸åº”è¯¥åµŒå¥—ï¼‰
+                    // ¼ÇÂ¼Ò»¸ö MULTI 
+                    // Èç¹ûÇ°ÃæÒÑ¾­ÓĞÒ»¸ö MULTI £¬ÄÇÃ´±¨´í£¨MULTI ²»Ó¦¸ÃÇ¶Ì×£©
                     if (multi++) {
                         ERROR("Unexpected MULTI");
                         break;
                     }
                 } else if (strcasecmp(str, "exec") == 0) {
-                    // æ¸…é™¤ä¸€ä¸ª MULTI è®°å½•
-                    // å¦‚æœå‰é¢æ²¡æœ‰ MULTI ï¼Œé‚£ä¹ˆæŠ¥é”™ï¼ˆMULTI å’Œ EXEC åº”è¯¥ä¸€å¯¹å¯¹å‡ºç°ï¼‰
+                    // Çå³ıÒ»¸ö MULTI ¼ÇÂ¼
+                    // Èç¹ûÇ°ÃæÃ»ÓĞ MULTI £¬ÄÇÃ´±¨´í£¨MULTI ºÍ EXEC Ó¦¸ÃÒ»¶Ô¶Ô³öÏÖ£©
                     if (--multi) {
                         ERROR("Unexpected EXEC");
                         break;
                     }
                 }
             }
-
-            // é‡Šæ”¾
-            free(str);
+            // ÊÍ·Å
+            zfree(str);
         }
 
         /* Stop if the loop did not finish 
          *
-         * å¦‚æœ for å¾ªç¯æ²¡æœ‰æ­£å¸¸ç»“æŸï¼Œé‚£ä¹ˆè·³å‡º while
+         * Èç¹û for Ñ­»·Ã»ÓĞÕı³£½áÊø£¬ÄÇÃ´Ìø³ö while
          */
         if (i < argc) {
-            if (str) free(str);
+            if (str) zfree(str);
             break;
         }
     }
 
-    // æ–‡ä»¶è¯»å–å®Œäº†ï¼Œä½†æ˜¯æ²¡æœ‰æ‰¾åˆ°å’Œ MULTI å¯¹åº”çš„ EXEC
+    // ÎÄ¼ş¶ÁÈ¡ÍêÁË£¬µ«ÊÇÃ»ÓĞÕÒµ½ºÍ MULTI ¶ÔÓ¦µÄ EXEC
     if (feof(fp) && multi && strlen(error) == 0) {
         ERROR("Reached EOF before reading EXEC for MULTI");
     }
-
-    // å¦‚æœæœ‰é”™è¯¯å‡ºç°ï¼Œé‚£ä¹ˆæ‰“å°é”™è¯¯
+    // Èç¹ûÓĞ´íÎó³öÏÖ£¬ÄÇÃ´´òÓ¡´íÎó
     if (strlen(error) > 0) {
         printf("%s\n", error);
     }
-
-    // è¿”å›åç§»é‡
+    // ·µ»ØÆ«ÒÆÁ¿
     return pos;
 }
 
-int main(int argc, char **argv) {
+int redis_check_aof_main(int argc, char **argv) {
     char *filename;
     int fix = 0;
 
-    // é€‰é¡¹ï¼Œå¦‚æœä¸å¸¦ --fix å°±åªæ£€æŸ¥ï¼Œä¸è¿›è¡Œä¿®å¤
+    // Ñ¡Ïî£¬Èç¹û²»´ø --fix ¾ÍÖ»¼ì²é£¬²»½øĞĞĞŞ¸´
     if (argc < 2) {
         printf("Usage: %s [--fix] <file.aof>\n", argv[0]);
         exit(1);
@@ -253,45 +227,60 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
-    // æ‰“å¼€æŒ‡å®šæ–‡ä»¶
+    // ´ò¿ªÖ¸¶¨ÎÄ¼ş
     FILE *fp = fopen(filename,"r+");
     if (fp == NULL) {
         printf("Cannot open file: %s\n", filename);
         exit(1);
     }
 
-    // è¯»å–æ–‡ä»¶ä¿¡æ¯
+    // ¶ÁÈ¡ÎÄ¼şĞÅÏ¢
     struct redis_stat sb;
     if (redis_fstat(fileno(fp),&sb) == -1) {
         printf("Cannot stat file: %s\n", filename);
         exit(1);
     }
 
-    // å–å‡ºæ–‡ä»¶çš„å¤§å°
+    // È¡³öÎÄ¼şµÄ´óĞ¡
     off_t size = sb.st_size;
     if (size == 0) {
         printf("Empty file: %s\n", filename);
         exit(1);
     }
 
-    // å¦‚æœæ–‡ä»¶å‡ºé”™ï¼Œé‚£ä¹ˆè¿™ä¸ªåç§»é‡æŒ‡å‘ï¼š
-    // 1ï¼‰ ç¬¬ä¸€ä¸ªä¸ç¬¦åˆæ ¼å¼çš„ä½ç½®
-    // 2ï¼‰ ç¬¬ä¸€ä¸ªæ²¡æœ‰ EXEC å¯¹åº”çš„ MULTI çš„ä½ç½®
-    // å¦‚æœæ–‡ä»¶æ²¡æœ‰å‡ºé”™ï¼Œé‚£ä¹ˆè¿™ä¸ªåç§»é‡æŒ‡å‘ï¼š
-    // 3ï¼‰ æ–‡ä»¶æœ«å°¾
+    /* This AOF file may have an RDB preamble. Check this to start, and if this
+     * is the case, start processing the RDB part. */
+    if (size >= 8) {    /* There must be at least room for the RDB header. */
+        char sig[5];
+        int has_preamble = fread(sig,sizeof(sig),1,fp) == 1 &&
+                            memcmp(sig,"REDIS",sizeof(sig)) == 0;
+        rewind(fp);
+        if (has_preamble) {
+            printf("The AOF appears to start with an RDB preamble.\n"
+                   "Checking the RDB preamble to start:\n");
+            if (redis_check_rdb_main(argc,argv,fp) == C_ERR) {
+                printf("RDB preamble of AOF file is not sane, aborting.\n");
+                exit(1);
+            } else {
+                printf("RDB preamble is OK, proceeding with AOF tail...\n");
+            }
+        }
+    }
+    // Èç¹ûÎÄ¼ş³ö´í£¬ÄÇÃ´Õâ¸öÆ«ÒÆÁ¿Ö¸Ïò£º
+    // 1£© µÚÒ»¸ö²»·ûºÏ¸ñÊ½µÄÎ»ÖÃ
+    // 2£© µÚÒ»¸öÃ»ÓĞ EXEC ¶ÔÓ¦µÄ MULTI µÄÎ»ÖÃ
+    // Èç¹ûÎÄ¼şÃ»ÓĞ³ö´í£¬ÄÇÃ´Õâ¸öÆ«ÒÆÁ¿Ö¸Ïò£º
+    // 3£© ÎÄ¼şÄ©Î²
     off_t pos = process(fp);
-    // è®¡ç®—åç§»é‡è·ç¦»æ–‡ä»¶æœ«å°¾æœ‰å¤šè¿œ
+    // ¼ÆËãÆ«ÒÆÁ¿¾àÀëÎÄ¼şÄ©Î²ÓĞ¶àÔ¶
     off_t diff = size-pos;
-    printf("AOF analyzed: size=%lld, ok_up_to=%lld, diff=%lld\n",
-        (long long) size, (long long) pos, (long long) diff);
-
-    // å¤§äº 0 è¡¨ç¤ºæœªåˆ°è¾¾æ–‡ä»¶æœ«å°¾ï¼Œå‡ºé”™
+    printf("AOF analyzed: size=%lld, ok_up_to=%lld, ok_up_to_line=%lld, diff=%lld\n",
+        (long long) size, (long long) pos, line, (long long) diff);
+    // ´óÓÚ 0 ±íÊ¾Î´µ½´ïÎÄ¼şÄ©Î²£¬³ö´í
     if (diff > 0) {
-
-        // fix æ¨¡å¼ï¼šå°è¯•ä¿®å¤æ–‡ä»¶
+        // fix Ä£Ê½£º³¢ÊÔĞŞ¸´ÎÄ¼ş
         if (fix) {
-
-            // å°è¯•ä»å‡ºé”™çš„ä½ç½®å¼€å§‹ï¼Œä¸€ç›´åˆ é™¤åˆ°æ–‡ä»¶çš„æœ«å°¾
+            // ³¢ÊÔ´Ó³ö´íµÄÎ»ÖÃ¿ªÊ¼£¬Ò»Ö±É¾³ıµ½ÎÄ¼şµÄÄ©Î²
             char buf[2];
             printf("This will shrink the AOF from %lld bytes, with %lld bytes, to %lld bytes\n",(long long)size,(long long)diff,(long long)pos);
             printf("Continue? [y/N]: ");
@@ -300,28 +289,25 @@ int main(int argc, char **argv) {
                     printf("Aborting...\n");
                     exit(1);
             }
-
-            // åˆ é™¤ä¸æ­£ç¡®çš„å†…å®¹
+            // É¾³ı²»ÕıÈ·µÄÄÚÈİ
             if (ftruncate(fileno(fp), pos) == -1) {
                 printf("Failed to truncate AOF\n");
                 exit(1);
             } else {
                 printf("Successfully truncated AOF\n");
             }
-
-        // é fix æ¨¡å¼ï¼šåªæŠ¥å‘Šæ–‡ä»¶ä¸åˆæ³•
+        // ·Ç fix Ä£Ê½£ºÖ»±¨¸æÎÄ¼ş²»ºÏ·¨
         } else {
-            printf("AOF is not valid\n");
+            printf("AOF is not valid. "
+                   "Use the --fix option to try fixing it.\n");
             exit(1);
         }
-
-    // ç­‰äº 0 è¡¨ç¤ºæ–‡ä»¶å·²ç»é¡ºåˆ©è¯»å®Œï¼Œæ— é”™
+    // µÈÓÚ 0 ±íÊ¾ÎÄ¼şÒÑ¾­Ë³Àû¶ÁÍê£¬ÎŞ´í
     } else {
         printf("AOF is valid\n");
     }
 
-    // å…³é—­æ–‡ä»¶
+    // ¹Ø±ÕÎÄ¼ş
     fclose(fp);
-
-    return 0;
+    exit(0);
 }

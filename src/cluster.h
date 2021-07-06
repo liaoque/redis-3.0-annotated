@@ -1,409 +1,432 @@
-#ifndef __REDIS_CLUSTER_H
-#define __REDIS_CLUSTER_H
+#ifndef __CLUSTER_H
+#define __CLUSTER_H
 
 /*-----------------------------------------------------------------------------
  * Redis cluster data structures, defines, exported API.
  *----------------------------------------------------------------------------*/
 
-// æ§½æ•°é‡
-#define REDIS_CLUSTER_SLOTS 16384
-// é›†ç¾¤åœ¨çº¿
-#define REDIS_CLUSTER_OK 0          /* Everything looks ok */
-// é›†ç¾¤ä¸‹çº¿
-#define REDIS_CLUSTER_FAIL 1        /* The cluster can't work */
-// èŠ‚ç‚¹åå­—çš„é•¿åº¦
-#define REDIS_CLUSTER_NAMELEN 40    /* sha1 hex length */
-// é›†ç¾¤çš„å®é™…ç«¯å£å· = ç”¨æˆ·æŒ‡å®šçš„ç«¯å£å· + REDIS_CLUSTER_PORT_INCR
-#define REDIS_CLUSTER_PORT_INCR 10000 /* Cluster port = baseport + PORT_INCR */
+// ²ÛÊıÁ¿
+#define CLUSTER_SLOTS 16384
+// ¼¯ÈºÔÚÏß
+#define CLUSTER_OK 0          /* Everything looks ok */
+// ¼¯ÈºÏÂÏß
+#define CLUSTER_FAIL 1        /* The cluster can't work */
+// ½ÚµãÃû×ÖµÄ³¤¶È
+#define CLUSTER_NAMELEN 40    /* sha1 hex length */
 
-/* The following defines are amunt of time, sometimes expressed as
+// ¼¯ÈºµÄÊµ¼Ê¶Ë¿ÚºÅ = ÓÃ»§Ö¸¶¨µÄ¶Ë¿ÚºÅ + REDIS_CLUSTER_PORT_INCR
+#define CLUSTER_PORT_INCR 10000 /* Cluster port = baseport + PORT_INCR */
+
+/* The following defines are amount of time, sometimes expressed as
  * multiplicators of the node timeout value (when ending with MULT). 
  *
- * ä»¥ä¸‹æ˜¯å’Œæ—¶é—´æœ‰å…³çš„ä¸€äº›å¸¸é‡ï¼Œ
- * ä»¥ _MULTI ç»“å°¾çš„å¸¸é‡ä¼šä½œä¸ºæ—¶é—´å€¼çš„ä¹˜æ³•å› å­æ¥ä½¿ç”¨ã€‚
+ * ÒÔÏÂÊÇºÍÊ±¼äÓĞ¹ØµÄÒ»Ğ©³£Á¿£¬
+ * ÒÔ _MULTI ½áÎ²µÄ³£Á¿»á×÷ÎªÊ±¼äÖµµÄ³Ë·¨Òò×ÓÀ´Ê¹ÓÃ¡£
  */
-// é»˜è®¤èŠ‚ç‚¹è¶…æ—¶æ—¶é™
-#define REDIS_CLUSTER_DEFAULT_NODE_TIMEOUT 15000
-// æ£€éªŒä¸‹çº¿æŠ¥å‘Šçš„ä¹˜æ³•å› å­
-#define REDIS_CLUSTER_FAIL_REPORT_VALIDITY_MULT 2 /* Fail report validity. */
-// æ’¤é”€ä¸»èŠ‚ç‚¹ FAIL çŠ¶æ€çš„ä¹˜æ³•å› å­
-#define REDIS_CLUSTER_FAIL_UNDO_TIME_MULT 2 /* Undo fail if master is back. */
-// æ’¤é”€ä¸»èŠ‚ç‚¹ FAIL çŠ¶æ€çš„åŠ æ³•å› å­
-#define REDIS_CLUSTER_FAIL_UNDO_TIME_ADD 10 /* Some additional time. */
-// åœ¨æ£€æŸ¥ä»èŠ‚ç‚¹æ•°æ®æ˜¯å¦æœ‰æ•ˆæ—¶ä½¿ç”¨çš„ä¹˜æ³•å› å­
-#define REDIS_CLUSTER_SLAVE_VALIDITY_MULT 10 /* Slave data validity. */
-// åœ¨æ‰§è¡Œæ•…éšœè½¬ç§»ä¹‹å‰éœ€è¦ç­‰å¾…çš„ç§’æ•°ï¼Œä¼¼ä¹å·²ç»åºŸå¼ƒ
-#define REDIS_CLUSTER_FAILOVER_DELAY 5 /* Seconds */
-// æœªä½¿ç”¨ï¼Œä¼¼ä¹å·²ç»åºŸå¼ƒ
-#define REDIS_CLUSTER_DEFAULT_MIGRATION_BARRIER 1
-// åœ¨è¿›è¡Œæ‰‹åŠ¨çš„æ•…éšœè½¬ç§»ä¹‹å‰ï¼Œéœ€è¦ç­‰å¾…çš„è¶…æ—¶æ—¶é—´
-#define REDIS_CLUSTER_MF_TIMEOUT 5000 /* Milliseconds to do a manual failover. */
-// æœªä½¿ç”¨ï¼Œä¼¼ä¹å·²ç»åºŸå¼ƒ
-#define REDIS_CLUSTER_MF_PAUSE_MULT 2 /* Master pause manual failover mult. */
+// ¼ìÑéÏÂÏß±¨¸æµÄ³Ë·¨Òò×Ó
+#define CLUSTER_FAIL_REPORT_VALIDITY_MULT 2 /* Fail report validity. */
+// ³·ÏúÖ÷½Úµã FAIL ×´Ì¬µÄ³Ë·¨Òò×Ó
+#define CLUSTER_FAIL_UNDO_TIME_MULT 2 /* Undo fail if master is back. */
+// ³·ÏúÖ÷½Úµã FAIL ×´Ì¬µÄ¼Ó·¨Òò×Ó
+#define CLUSTER_FAIL_UNDO_TIME_ADD 10 /* Some additional time. */
+// ÔÚÖ´ĞĞ¹ÊÕÏ×ªÒÆÖ®Ç°ĞèÒªµÈ´ıµÄÃëÊı£¬ËÆºõÒÑ¾­·ÏÆú
+#define CLUSTER_FAILOVER_DELAY 5 /* Seconds */
+// ÔÚ½øĞĞÊÖ¶¯µÄ¹ÊÕÏ×ªÒÆÖ®Ç°£¬ĞèÒªµÈ´ıµÄ³¬Ê±Ê±¼ä
+#define CLUSTER_MF_TIMEOUT 5000 /* Milliseconds to do a manual failover. */
+// Î´Ê¹ÓÃ£¬ËÆºõÒÑ¾­·ÏÆú
+#define CLUSTER_MF_PAUSE_MULT 2 /* Master pause manual failover mult. */
+
+#define CLUSTER_SLAVE_MIGRATION_DELAY 5000 /* Delay for slave migration. */
 
 /* Redirection errors returned by getNodeByQuery(). */
-/* ç”± getNodeByQuery() å‡½æ•°è¿”å›çš„è½¬å‘é”™è¯¯ã€‚ */
-// èŠ‚ç‚¹å¯ä»¥å¤„ç†è¿™ä¸ªå‘½ä»¤
-#define REDIS_CLUSTER_REDIR_NONE 0          /* Node can serve the request. */
-// é”®åœ¨å…¶ä»–æ§½
-#define REDIS_CLUSTER_REDIR_CROSS_SLOT 1    /* Keys in different slots. */
-// é”®æ‰€å¤„çš„æ§½æ­£åœ¨è¿›è¡Œ reshard
-#define REDIS_CLUSTER_REDIR_UNSTABLE 2      /* Keys in slot resharding. */
-// éœ€è¦è¿›è¡Œ ASK è½¬å‘
-#define REDIS_CLUSTER_REDIR_ASK 3           /* -ASK redirection required. */
-// éœ€è¦è¿›è¡Œ MOVED è½¬å‘
-#define REDIS_CLUSTER_REDIR_MOVED 4         /* -MOVED redirection required. */
+/* ÓÉ getNodeByQuery() º¯Êı·µ»ØµÄ×ªÏò´íÎó¡£ */
+// ½Úµã¿ÉÒÔ´¦ÀíÕâ¸öÃüÁî
+#define CLUSTER_REDIR_NONE 0          /* Node can serve the request. */
+// ¼üÔÚÆäËû²Û
+#define CLUSTER_REDIR_CROSS_SLOT 1    /* -CROSSSLOT request. */
+// ¼üËù´¦µÄ²ÛÕıÔÚ½øĞĞ reshard
+#define CLUSTER_REDIR_UNSTABLE 2      /* -TRYAGAIN redirection required */
+// ĞèÒª½øĞĞ ASK ×ªÏò
+#define CLUSTER_REDIR_ASK 3           /* -ASK redirection required. */
+// ĞèÒª½øĞĞ MOVED ×ªÏò
+#define CLUSTER_REDIR_MOVED 4         /* -MOVED redirection required. */
 
-// å‰ç½®å®šä¹‰ï¼Œé˜²æ­¢ç¼–è¯‘é”™è¯¯
+#define CLUSTER_REDIR_DOWN_STATE 5    /* -CLUSTERDOWN, global state. */
+
+#define CLUSTER_REDIR_DOWN_UNBOUND 6  /* -CLUSTERDOWN, unbound slot. */
+
+#define CLUSTER_REDIR_DOWN_RO_STATE 7 /* -CLUSTERDOWN, allow reads. */
+
+// Ç°ÖÃ¶¨Òå£¬·ÀÖ¹±àÒë´íÎó
 struct clusterNode;
 
-
 /* clusterLink encapsulates everything needed to talk with a remote node. */
-// clusterLink åŒ…å«äº†ä¸å…¶ä»–èŠ‚ç‚¹è¿›è¡Œé€šè®¯æ‰€éœ€çš„å…¨éƒ¨ä¿¡æ¯
+// clusterLink °üº¬ÁËÓëÆäËû½Úµã½øĞĞÍ¨Ñ¶ËùĞèµÄÈ«²¿ĞÅÏ¢
 typedef struct clusterLink {
-
-    // è¿æ¥çš„åˆ›å»ºæ—¶é—´
+    // Á¬½ÓµÄ´´½¨Ê±¼ä
     mstime_t ctime;             /* Link creation time */
-
-    // TCP å¥—æ¥å­—æè¿°ç¬¦
-    int fd;                     /* TCP socket file descriptor */
-
-    // è¾“å‡ºç¼“å†²åŒºï¼Œä¿å­˜ç€ç­‰å¾…å‘é€ç»™å…¶ä»–èŠ‚ç‚¹çš„æ¶ˆæ¯ï¼ˆmessageï¼‰ã€‚
+    // TCP Ì×½Ó×ÖÃèÊö·û
+    connection *conn;           /* Connection to remote node */
+    // Êä³ö»º³åÇø£¬±£´æ×ÅµÈ´ı·¢ËÍ¸øÆäËû½ÚµãµÄÏûÏ¢£¨message£©¡£
     sds sndbuf;                 /* Packet send buffer */
-
-    // è¾“å…¥ç¼“å†²åŒºï¼Œä¿å­˜ç€ä»å…¶ä»–èŠ‚ç‚¹æ¥æ”¶åˆ°çš„æ¶ˆæ¯ã€‚
-    sds rcvbuf;                 /* Packet reception buffer */
-
-    // ä¸è¿™ä¸ªè¿æ¥ç›¸å…³è”çš„èŠ‚ç‚¹ï¼Œå¦‚æœæ²¡æœ‰çš„è¯å°±ä¸º NULL
+    // ÊäÈë»º³åÇø£¬±£´æ×Å´ÓÆäËû½Úµã½ÓÊÕµ½µÄÏûÏ¢¡£
+    char *rcvbuf;               /* Packet reception buffer */
+    size_t rcvbuf_len;          /* Used size of rcvbuf */
+    size_t rcvbuf_alloc;        /* Allocated size of rcvbuf */
+    // ÓëÕâ¸öÁ¬½ÓÏà¹ØÁªµÄ½Úµã£¬Èç¹ûÃ»ÓĞµÄ»°¾ÍÎª NULL
     struct clusterNode *node;   /* Node related to this link if any, or NULL */
-
 } clusterLink;
 
 /* Cluster node flags and macros. */
-// è¯¥èŠ‚ç‚¹ä¸ºä¸»èŠ‚ç‚¹
-#define REDIS_NODE_MASTER 1     /* The node is a master */
-// è¯¥èŠ‚ç‚¹ä¸ºä»èŠ‚ç‚¹
-#define REDIS_NODE_SLAVE 2      /* The node is a slave */
-// è¯¥èŠ‚ç‚¹ç–‘ä¼¼ä¸‹çº¿ï¼Œéœ€è¦å¯¹å®ƒçš„çŠ¶æ€è¿›è¡Œç¡®è®¤
-#define REDIS_NODE_PFAIL 4      /* Failure? Need acknowledge */
-// è¯¥èŠ‚ç‚¹å·²ä¸‹çº¿
-#define REDIS_NODE_FAIL 8       /* The node is believed to be malfunctioning */
-// è¯¥èŠ‚ç‚¹æ˜¯å½“å‰èŠ‚ç‚¹è‡ªèº«
-#define REDIS_NODE_MYSELF 16    /* This node is myself */
-// è¯¥èŠ‚ç‚¹è¿˜æœªä¸å½“å‰èŠ‚ç‚¹å®Œæˆç¬¬ä¸€æ¬¡ PING - PONG é€šè®¯
-#define REDIS_NODE_HANDSHAKE 32 /* We have still to exchange the first ping */
-// è¯¥èŠ‚ç‚¹æ²¡æœ‰åœ°å€
-#define REDIS_NODE_NOADDR   64  /* We don't know the address of this node */
-// å½“å‰èŠ‚ç‚¹è¿˜æœªä¸è¯¥èŠ‚ç‚¹è¿›è¡Œè¿‡æ¥è§¦
-// å¸¦æœ‰è¿™ä¸ªæ ‡è¯†ä¼šè®©å½“å‰èŠ‚ç‚¹å‘é€ MEET å‘½ä»¤è€Œä¸æ˜¯ PING å‘½ä»¤
-#define REDIS_NODE_MEET 128     /* Send a MEET message to this node */
-// è¯¥èŠ‚ç‚¹è¢«é€‰ä¸­ä¸ºæ–°çš„ä¸»èŠ‚ç‚¹
-#define REDIS_NODE_PROMOTED 256 /* Master was a slave propoted by failover */
-// ç©ºåå­—ï¼ˆåœ¨èŠ‚ç‚¹ä¸ºä¸»èŠ‚ç‚¹æ—¶ï¼Œç”¨ä½œæ¶ˆæ¯ä¸­çš„ slaveof å±æ€§çš„å€¼ï¼‰
-#define REDIS_NODE_NULL_NAME "\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000"
+// ¸Ã½ÚµãÎªÖ÷½Úµã
+#define CLUSTER_NODE_MASTER 1     /* The node is a master */
+// ¸Ã½ÚµãÎª´Ó½Úµã
+#define CLUSTER_NODE_SLAVE 2      /* The node is a slave */
+// ¸Ã½ÚµãÒÉËÆÏÂÏß£¬ĞèÒª¶ÔËüµÄ×´Ì¬½øĞĞÈ·ÈÏ
+#define CLUSTER_NODE_PFAIL 4      /* Failure? Need acknowledge */
+// ¸Ã½ÚµãÒÑÏÂÏß
+#define CLUSTER_NODE_FAIL 8       /* The node is believed to be malfunctioning */
+// ¸Ã½ÚµãÊÇµ±Ç°½Úµã×ÔÉí
+#define CLUSTER_NODE_MYSELF 16    /* This node is myself */
+// ¸Ã½Úµã»¹Î´Óëµ±Ç°½ÚµãÍê³ÉµÚÒ»´Î PING - PONG Í¨Ñ¶
+#define CLUSTER_NODE_HANDSHAKE 32 /* We have still to exchange the first ping */
+// ¸Ã½ÚµãÃ»ÓĞµØÖ·
+#define CLUSTER_NODE_NOADDR   64  /* We don't know the address of this node */
+// µ±Ç°½Úµã»¹Î´Óë¸Ã½Úµã½øĞĞ¹ı½Ó´¥
+// ´øÓĞÕâ¸ö±êÊ¶»áÈÃµ±Ç°½Úµã·¢ËÍ MEET ÃüÁî¶ø²»ÊÇ PING ÃüÁî
+#define CLUSTER_NODE_MEET 128     /* Send a MEET message to this node */
+// ¸Ã½Úµã±»Ñ¡ÖĞÎªĞÂµÄÖ÷½Úµã
+#define CLUSTER_NODE_MIGRATE_TO 256 /* Master eligible for replica migration. */
 
-// ç”¨äºåˆ¤æ–­èŠ‚ç‚¹èº«ä»½å’ŒçŠ¶æ€çš„ä¸€ç³»åˆ—å®
-#define nodeIsMaster(n) ((n)->flags & REDIS_NODE_MASTER)
-#define nodeIsSlave(n) ((n)->flags & REDIS_NODE_SLAVE)
-#define nodeInHandshake(n) ((n)->flags & REDIS_NODE_HANDSHAKE)
-#define nodeHasAddr(n) (!((n)->flags & REDIS_NODE_NOADDR))
-#define nodeWithoutAddr(n) ((n)->flags & REDIS_NODE_NOADDR)
-#define nodeTimedOut(n) ((n)->flags & REDIS_NODE_PFAIL)
-#define nodeFailed(n) ((n)->flags & REDIS_NODE_FAIL)
+#define CLUSTER_NODE_NOFAILOVER 512 /* Slave will not try to failover. */
+// ¿ÕÃû×Ö£¨ÔÚ½ÚµãÎªÖ÷½ÚµãÊ±£¬ÓÃ×÷ÏûÏ¢ÖĞµÄ slaveof ÊôĞÔµÄÖµ£©
+#define CLUSTER_NODE_NULL_NAME "\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000"
+// ÓÃÓÚÅĞ¶Ï½ÚµãÉí·İºÍ×´Ì¬µÄÒ»ÏµÁĞºê
+#define nodeIsMaster(n) ((n)->flags & CLUSTER_NODE_MASTER)
+#define nodeIsSlave(n) ((n)->flags & CLUSTER_NODE_SLAVE)
+#define nodeInHandshake(n) ((n)->flags & CLUSTER_NODE_HANDSHAKE)
+#define nodeHasAddr(n) (!((n)->flags & CLUSTER_NODE_NOADDR))
+#define nodeWithoutAddr(n) ((n)->flags & CLUSTER_NODE_NOADDR)
+#define nodeTimedOut(n) ((n)->flags & CLUSTER_NODE_PFAIL)
+#define nodeFailed(n) ((n)->flags & CLUSTER_NODE_FAIL)
+#define nodeCantFailover(n) ((n)->flags & CLUSTER_NODE_NOFAILOVER)
 
-/* This structure represent elements of node->fail_reports. */
-// æ¯ä¸ª clusterNodeFailReport ç»“æ„ä¿å­˜äº†ä¸€æ¡å…¶ä»–èŠ‚ç‚¹å¯¹ç›®æ ‡èŠ‚ç‚¹çš„ä¸‹çº¿æŠ¥å‘Š
-// ï¼ˆè®¤ä¸ºç›®æ ‡èŠ‚ç‚¹å·²ç»ä¸‹çº¿ï¼‰
-struct clusterNodeFailReport {
-
-    // æŠ¥å‘Šç›®æ ‡èŠ‚ç‚¹å·²ç»ä¸‹çº¿çš„èŠ‚ç‚¹
-    struct clusterNode *node;  /* Node reporting the failure condition. */
-
-    // æœ€åä¸€æ¬¡ä» node èŠ‚ç‚¹æ”¶åˆ°ä¸‹çº¿æŠ¥å‘Šçš„æ—¶é—´
-    // ç¨‹åºä½¿ç”¨è¿™ä¸ªæ—¶é—´æˆ³æ¥æ£€æŸ¥ä¸‹çº¿æŠ¥å‘Šæ˜¯å¦è¿‡æœŸ
-    mstime_t time;             /* Time of the last report from this node. */
-
-} typedef clusterNodeFailReport;
-
-
-// èŠ‚ç‚¹çŠ¶æ€
-struct clusterNode {
-
-    // åˆ›å»ºèŠ‚ç‚¹çš„æ—¶é—´
-    mstime_t ctime; /* Node object creation time. */
-
-    // èŠ‚ç‚¹çš„åå­—ï¼Œç”± 40 ä¸ªåå…­è¿›åˆ¶å­—ç¬¦ç»„æˆ
-    // ä¾‹å¦‚ 68eef66df23420a5862208ef5b1a7005b806f2ff
-    char name[REDIS_CLUSTER_NAMELEN]; /* Node name, hex string, sha1-size */
-
-    // èŠ‚ç‚¹æ ‡è¯†
-    // ä½¿ç”¨å„ç§ä¸åŒçš„æ ‡è¯†å€¼è®°å½•èŠ‚ç‚¹çš„è§’è‰²ï¼ˆæ¯”å¦‚ä¸»èŠ‚ç‚¹æˆ–è€…ä»èŠ‚ç‚¹ï¼‰ï¼Œ
-    // ä»¥åŠèŠ‚ç‚¹ç›®å‰æ‰€å¤„çš„çŠ¶æ€ï¼ˆæ¯”å¦‚åœ¨çº¿æˆ–è€…ä¸‹çº¿ï¼‰ã€‚
-    int flags;      /* REDIS_NODE_... */
-
-    // èŠ‚ç‚¹å½“å‰çš„é…ç½®çºªå…ƒï¼Œç”¨äºå®ç°æ•…éšœè½¬ç§»
-    uint64_t configEpoch; /* Last configEpoch observed for this node */
-
-    // ç”±è¿™ä¸ªèŠ‚ç‚¹è´Ÿè´£å¤„ç†çš„æ§½
-    // ä¸€å…±æœ‰ REDIS_CLUSTER_SLOTS / 8 ä¸ªå­—èŠ‚é•¿
-    // æ¯ä¸ªå­—èŠ‚çš„æ¯ä¸ªä½è®°å½•äº†ä¸€ä¸ªæ§½çš„ä¿å­˜çŠ¶æ€
-    // ä½çš„å€¼ä¸º 1 è¡¨ç¤ºæ§½æ­£ç”±æœ¬èŠ‚ç‚¹å¤„ç†ï¼Œå€¼ä¸º 0 åˆ™è¡¨ç¤ºæ§½å¹¶éæœ¬èŠ‚ç‚¹å¤„ç†
-    // æ¯”å¦‚ slots[0] çš„ç¬¬ä¸€ä¸ªä½ä¿å­˜äº†æ§½ 0 çš„ä¿å­˜æƒ…å†µ
-    // slots[0] çš„ç¬¬äºŒä¸ªä½ä¿å­˜äº†æ§½ 1 çš„ä¿å­˜æƒ…å†µï¼Œä»¥æ­¤ç±»æ¨
-    unsigned char slots[REDIS_CLUSTER_SLOTS/8]; /* slots handled by this node */
-
-    // è¯¥èŠ‚ç‚¹è´Ÿè´£å¤„ç†çš„æ§½æ•°é‡
-    int numslots;   /* Number of slots handled by this node */
-
-    // å¦‚æœæœ¬èŠ‚ç‚¹æ˜¯ä¸»èŠ‚ç‚¹ï¼Œé‚£ä¹ˆç”¨è¿™ä¸ªå±æ€§è®°å½•ä»èŠ‚ç‚¹çš„æ•°é‡
-    int numslaves;  /* Number of slave nodes, if this is a master */
-
-    // æŒ‡é’ˆæ•°ç»„ï¼ŒæŒ‡å‘å„ä¸ªä»èŠ‚ç‚¹
-    struct clusterNode **slaves; /* pointers to slave nodes */
-
-    // å¦‚æœè¿™æ˜¯ä¸€ä¸ªä»èŠ‚ç‚¹ï¼Œé‚£ä¹ˆæŒ‡å‘ä¸»èŠ‚ç‚¹
-    struct clusterNode *slaveof; /* pointer to the master node */
-
-    // æœ€åä¸€æ¬¡å‘é€ PING å‘½ä»¤çš„æ—¶é—´
-    mstime_t ping_sent;      /* Unix time we sent latest ping */
-
-    // æœ€åä¸€æ¬¡æ¥æ”¶ PONG å›å¤çš„æ—¶é—´æˆ³
-    mstime_t pong_received;  /* Unix time we received the pong */
-
-    // æœ€åä¸€æ¬¡è¢«è®¾ç½®ä¸º FAIL çŠ¶æ€çš„æ—¶é—´
-    mstime_t fail_time;      /* Unix time when FAIL flag was set */
-
-    // æœ€åä¸€æ¬¡ç»™æŸä¸ªä»èŠ‚ç‚¹æŠ•ç¥¨çš„æ—¶é—´
-    mstime_t voted_time;     /* Last time we voted for a slave of this master */
-
-    // æœ€åä¸€æ¬¡ä»è¿™ä¸ªèŠ‚ç‚¹æ¥æ”¶åˆ°å¤åˆ¶åç§»é‡çš„æ—¶é—´
-    mstime_t repl_offset_time;  /* Unix time we received offset for this node */
-
-    // è¿™ä¸ªèŠ‚ç‚¹çš„å¤åˆ¶åç§»é‡
-    long long repl_offset;      /* Last known repl offset for this node. */
-
-    // èŠ‚ç‚¹çš„ IP åœ°å€
-    char ip[REDIS_IP_STR_LEN];  /* Latest known IP address of this node */
-
-    // èŠ‚ç‚¹çš„ç«¯å£å·
-    int port;                   /* Latest known port of this node */
-
-    // ä¿å­˜è¿æ¥èŠ‚ç‚¹æ‰€éœ€çš„æœ‰å…³ä¿¡æ¯
-    clusterLink *link;          /* TCP/IP link with this node */
-
-    // ä¸€ä¸ªé“¾è¡¨ï¼Œè®°å½•äº†æ‰€æœ‰å…¶ä»–èŠ‚ç‚¹å¯¹è¯¥èŠ‚ç‚¹çš„ä¸‹çº¿æŠ¥å‘Š
-    list *fail_reports;         /* List of nodes signaling this as failing */
-
-};
-typedef struct clusterNode clusterNode;
-
-
-// é›†ç¾¤çŠ¶æ€ï¼Œæ¯ä¸ªèŠ‚ç‚¹éƒ½ä¿å­˜ç€ä¸€ä¸ªè¿™æ ·çš„çŠ¶æ€ï¼Œè®°å½•äº†å®ƒä»¬çœ¼ä¸­çš„é›†ç¾¤çš„æ ·å­ã€‚
-// å¦å¤–ï¼Œè™½ç„¶è¿™ä¸ªç»“æ„ä¸»è¦ç”¨äºè®°å½•é›†ç¾¤çš„å±æ€§ï¼Œä½†æ˜¯ä¸ºäº†èŠ‚çº¦èµ„æºï¼Œ
-// æœ‰äº›ä¸èŠ‚ç‚¹æœ‰å…³çš„å±æ€§ï¼Œæ¯”å¦‚ slots_to_keys ã€ failover_auth_count 
-// ä¹Ÿè¢«æ”¾åˆ°äº†è¿™ä¸ªç»“æ„é‡Œé¢ã€‚
-typedef struct clusterState {
-
-    // æŒ‡å‘å½“å‰èŠ‚ç‚¹çš„æŒ‡é’ˆ
-    clusterNode *myself;  /* This node */
-
-    // é›†ç¾¤å½“å‰çš„é…ç½®çºªå…ƒï¼Œç”¨äºå®ç°æ•…éšœè½¬ç§»
-    uint64_t currentEpoch;
-
-    // é›†ç¾¤å½“å‰çš„çŠ¶æ€ï¼šæ˜¯åœ¨çº¿è¿˜æ˜¯ä¸‹çº¿
-    int state;            /* REDIS_CLUSTER_OK, REDIS_CLUSTER_FAIL, ... */
-
-    // é›†ç¾¤ä¸­è‡³å°‘å¤„ç†ç€ä¸€ä¸ªæ§½çš„èŠ‚ç‚¹çš„æ•°é‡ã€‚
-    int size;             /* Num of master nodes with at least one slot */
-
-    // é›†ç¾¤èŠ‚ç‚¹åå•ï¼ˆåŒ…æ‹¬ myself èŠ‚ç‚¹ï¼‰
-    // å­—å…¸çš„é”®ä¸ºèŠ‚ç‚¹çš„åå­—ï¼Œå­—å…¸çš„å€¼ä¸º clusterNode ç»“æ„
-    dict *nodes;          /* Hash table of name -> clusterNode structures */
-
-    // èŠ‚ç‚¹é»‘åå•ï¼Œç”¨äº CLUSTER FORGET å‘½ä»¤
-    // é˜²æ­¢è¢« FORGET çš„å‘½ä»¤é‡æ–°è¢«æ·»åŠ åˆ°é›†ç¾¤é‡Œé¢
-    // ï¼ˆä¸è¿‡ç°åœ¨ä¼¼ä¹æ²¡æœ‰åœ¨ä½¿ç”¨çš„æ ·å­ï¼Œå·²åºŸå¼ƒï¼Ÿè¿˜æ˜¯å°šæœªå®ç°ï¼Ÿï¼‰
-    dict *nodes_black_list; /* Nodes we don't re-add for a few seconds. */
-
-    // è®°å½•è¦ä»å½“å‰èŠ‚ç‚¹è¿ç§»åˆ°ç›®æ ‡èŠ‚ç‚¹çš„æ§½ï¼Œä»¥åŠè¿ç§»çš„ç›®æ ‡èŠ‚ç‚¹
-    // migrating_slots_to[i] = NULL è¡¨ç¤ºæ§½ i æœªè¢«è¿ç§»
-    // migrating_slots_to[i] = clusterNode_A è¡¨ç¤ºæ§½ i è¦ä»æœ¬èŠ‚ç‚¹è¿ç§»è‡³èŠ‚ç‚¹ A
-    clusterNode *migrating_slots_to[REDIS_CLUSTER_SLOTS];
-
-    // è®°å½•è¦ä»æºèŠ‚ç‚¹è¿ç§»åˆ°æœ¬èŠ‚ç‚¹çš„æ§½ï¼Œä»¥åŠè¿›è¡Œè¿ç§»çš„æºèŠ‚ç‚¹
-    // importing_slots_from[i] = NULL è¡¨ç¤ºæ§½ i æœªè¿›è¡Œå¯¼å…¥
-    // importing_slots_from[i] = clusterNode_A è¡¨ç¤ºæ­£ä»èŠ‚ç‚¹ A ä¸­å¯¼å…¥æ§½ i
-    clusterNode *importing_slots_from[REDIS_CLUSTER_SLOTS];
-
-    // è´Ÿè´£å¤„ç†å„ä¸ªæ§½çš„èŠ‚ç‚¹
-    // ä¾‹å¦‚ slots[i] = clusterNode_A è¡¨ç¤ºæ§½ i ç”±èŠ‚ç‚¹ A å¤„ç†
-    clusterNode *slots[REDIS_CLUSTER_SLOTS];
-
-    // è·³è·ƒè¡¨ï¼Œè¡¨ä¸­ä»¥æ§½ä½œä¸ºåˆ†å€¼ï¼Œé”®ä½œä¸ºæˆå‘˜ï¼Œå¯¹æ§½è¿›è¡Œæœ‰åºæ’åº
-    // å½“éœ€è¦å¯¹æŸäº›æ§½è¿›è¡ŒåŒºé—´ï¼ˆrangeï¼‰æ“ä½œæ—¶ï¼Œè¿™ä¸ªè·³è·ƒè¡¨å¯ä»¥æä¾›æ–¹ä¾¿
-    // å…·ä½“æ“ä½œå®šä¹‰åœ¨ db.c é‡Œé¢
-    zskiplist *slots_to_keys;
-
-    /* The following fields are used to take the slave state on elections. */
-    // ä»¥ä¸‹è¿™äº›åŸŸè¢«ç”¨äºè¿›è¡Œæ•…éšœè½¬ç§»é€‰ä¸¾
-
-    // ä¸Šæ¬¡æ‰§è¡Œé€‰ä¸¾æˆ–è€…ä¸‹æ¬¡æ‰§è¡Œé€‰ä¸¾çš„æ—¶é—´
-    mstime_t failover_auth_time; /* Time of previous or next election. */
-
-    // èŠ‚ç‚¹è·å¾—çš„æŠ•ç¥¨æ•°é‡
-    int failover_auth_count;    /* Number of votes received so far. */
-
-    // å¦‚æœå€¼ä¸º 1 ï¼Œè¡¨ç¤ºæœ¬èŠ‚ç‚¹å·²ç»å‘å…¶ä»–èŠ‚ç‚¹å‘é€äº†æŠ•ç¥¨è¯·æ±‚
-    int failover_auth_sent;     /* True if we already asked for votes. */
-
-    int failover_auth_rank;     /* This slave rank for current auth request. */
-
-    uint64_t failover_auth_epoch; /* Epoch of the current election. */
-
-    /* Manual failover state in common. */
-    /* å…±ç”¨çš„æ‰‹åŠ¨æ•…éšœè½¬ç§»çŠ¶æ€ */
-
-    // æ‰‹åŠ¨æ•…éšœè½¬ç§»æ‰§è¡Œçš„æ—¶é—´é™åˆ¶
-    mstime_t mf_end;            /* Manual failover time limit (ms unixtime).
-                                   It is zero if there is no MF in progress. */
-    /* Manual failover state of master. */
-    /* ä¸»æœåŠ¡å™¨çš„æ‰‹åŠ¨æ•…éšœè½¬ç§»çŠ¶æ€ */
-    clusterNode *mf_slave;      /* Slave performing the manual failover. */
-    /* Manual failover state of slave. */
-    /* ä»æœåŠ¡å™¨çš„æ‰‹åŠ¨æ•…éšœè½¬ç§»çŠ¶æ€ */
-    long long mf_master_offset; /* Master offset the slave needs to start MF
-                                   or zero if stil not received. */
-    // æŒ‡ç¤ºæ‰‹åŠ¨æ•…éšœè½¬ç§»æ˜¯å¦å¯ä»¥å¼€å§‹çš„æ ‡å¿—å€¼
-    // å€¼ä¸ºé 0 æ—¶è¡¨ç¤ºå„ä¸ªä¸»æœåŠ¡å™¨å¯ä»¥å¼€å§‹æŠ•ç¥¨
-    int mf_can_start;           /* If non-zero signal that the manual failover
-                                   can start requesting masters vote. */
-
-    /* The followign fields are uesd by masters to take state on elections. */
-    /* ä»¥ä¸‹è¿™äº›åŸŸç”±ä¸»æœåŠ¡å™¨ä½¿ç”¨ï¼Œç”¨äºè®°å½•é€‰ä¸¾æ—¶çš„çŠ¶æ€ */
-
-    // é›†ç¾¤æœ€åä¸€æ¬¡è¿›è¡ŒæŠ•ç¥¨çš„çºªå…ƒ
-    uint64_t lastVoteEpoch;     /* Epoch of the last vote granted. */
-
-    // åœ¨è¿›å…¥ä¸‹ä¸ªäº‹ä»¶å¾ªç¯ä¹‹å‰è¦åšçš„äº‹æƒ…ï¼Œä»¥å„ä¸ª flag æ¥è®°å½•
-    int todo_before_sleep; /* Things to do in clusterBeforeSleep(). */
-
-    // é€šè¿‡ cluster è¿æ¥å‘é€çš„æ¶ˆæ¯æ•°é‡
-    long long stats_bus_messages_sent;  /* Num of msg sent via cluster bus. */
-
-    // é€šè¿‡ cluster æ¥æ”¶åˆ°çš„æ¶ˆæ¯æ•°é‡
-    long long stats_bus_messages_received; /* Num of msg rcvd via cluster bus.*/
-
-} clusterState;
+/* Reasons why a slave is not able to failover. */
+#define CLUSTER_CANT_FAILOVER_NONE 0
+#define CLUSTER_CANT_FAILOVER_DATA_AGE 1
+#define CLUSTER_CANT_FAILOVER_WAITING_DELAY 2
+#define CLUSTER_CANT_FAILOVER_EXPIRED 3
+#define CLUSTER_CANT_FAILOVER_WAITING_VOTES 4
+#define CLUSTER_CANT_FAILOVER_RELOG_PERIOD (60*5) /* seconds. */
 
 /* clusterState todo_before_sleep flags. */
-// ä»¥ä¸‹æ¯ä¸ª flag ä»£è¡¨äº†ä¸€ä¸ªæœåŠ¡å™¨åœ¨å¼€å§‹ä¸‹ä¸€ä¸ªäº‹ä»¶å¾ªç¯ä¹‹å‰
-// è¦åšçš„äº‹æƒ…
+// ÒÔÏÂÃ¿¸ö flag ´ú±íÁËÒ»¸ö·şÎñÆ÷ÔÚ¿ªÊ¼ÏÂÒ»¸öÊÂ¼şÑ­»·Ö®Ç°
+// Òª×öµÄÊÂÇé
 #define CLUSTER_TODO_HANDLE_FAILOVER (1<<0)
 #define CLUSTER_TODO_UPDATE_STATE (1<<1)
 #define CLUSTER_TODO_SAVE_CONFIG (1<<2)
 #define CLUSTER_TODO_FSYNC_CONFIG (1<<3)
+#define CLUSTER_TODO_HANDLE_MANUALFAILOVER (1<<4)
 
-/* Redis cluster messages header */
-
-/* Note that the PING, PONG and MEET messages are actually the same exact
+/* Message types.
+ *
+ * Note that the PING, PONG and MEET messages are actually the same exact
  * kind of packet. PONG is the reply to ping, in the exact format as a PING,
  * while MEET is a special PING that forces the receiver to add the sender
  * as a node (if it is not already in the list). */
-// æ³¨æ„ï¼ŒPING ã€ PONG å’Œ MEET å®é™…ä¸Šæ˜¯åŒä¸€ç§æ¶ˆæ¯ã€‚
-// PONG æ˜¯å¯¹ PING çš„å›å¤ï¼Œå®ƒçš„å®é™…æ ¼å¼ä¹Ÿä¸º PING æ¶ˆæ¯ï¼Œ
-// è€Œ MEET åˆ™æ˜¯ä¸€ç§ç‰¹æ®Šçš„ PING æ¶ˆæ¯ï¼Œç”¨äºå¼ºåˆ¶æ¶ˆæ¯çš„æ¥æ”¶è€…å°†æ¶ˆæ¯çš„å‘é€è€…æ·»åŠ åˆ°é›†ç¾¤ä¸­
-// ï¼ˆå¦‚æœèŠ‚ç‚¹å°šæœªåœ¨èŠ‚ç‚¹åˆ—è¡¨ä¸­çš„è¯ï¼‰
+// ×¢Òâ£¬PING ¡¢ PONG ºÍ MEET Êµ¼ÊÉÏÊÇÍ¬Ò»ÖÖÏûÏ¢¡£
+// PONG ÊÇ¶Ô PING µÄ»Ø¸´£¬ËüµÄÊµ¼Ê¸ñÊ½Ò²Îª PING ÏûÏ¢£¬
+// ¶ø MEET ÔòÊÇÒ»ÖÖÌØÊâµÄ PING ÏûÏ¢£¬ÓÃÓÚÇ¿ÖÆÏûÏ¢µÄ½ÓÊÕÕß½«ÏûÏ¢µÄ·¢ËÍÕßÌí¼Óµ½¼¯ÈºÖĞ
+// £¨Èç¹û½ÚµãÉĞÎ´ÔÚ½ÚµãÁĞ±íÖĞµÄ»°£©
 // PING
 #define CLUSTERMSG_TYPE_PING 0          /* Ping */
-// PONG ï¼ˆå›å¤ PINGï¼‰
+// PONG £¨»Ø¸´ PING£©
 #define CLUSTERMSG_TYPE_PONG 1          /* Pong (reply to Ping) */
-// è¯·æ±‚å°†æŸä¸ªèŠ‚ç‚¹æ·»åŠ åˆ°é›†ç¾¤ä¸­
+// ÇëÇó½«Ä³¸ö½ÚµãÌí¼Óµ½¼¯ÈºÖĞ
 #define CLUSTERMSG_TYPE_MEET 2          /* Meet "let's join" message */
-// å°†æŸä¸ªèŠ‚ç‚¹æ ‡è®°ä¸º FAIL
+// ½«Ä³¸ö½Úµã±ê¼ÇÎª FAIL
 #define CLUSTERMSG_TYPE_FAIL 3          /* Mark node xxx as failing */
-// é€šè¿‡å‘å¸ƒä¸è®¢é˜…åŠŸèƒ½å¹¿æ’­æ¶ˆæ¯
+// Í¨¹ı·¢²¼Óë¶©ÔÄ¹¦ÄÜ¹ã²¥ÏûÏ¢
 #define CLUSTERMSG_TYPE_PUBLISH 4       /* Pub/Sub Publish propagation */
-// è¯·æ±‚è¿›è¡Œæ•…éšœè½¬ç§»æ“ä½œï¼Œè¦æ±‚æ¶ˆæ¯çš„æ¥æ”¶è€…é€šè¿‡æŠ•ç¥¨æ¥æ”¯æŒæ¶ˆæ¯çš„å‘é€è€…
+// ÇëÇó½øĞĞ¹ÊÕÏ×ªÒÆ²Ù×÷£¬ÒªÇóÏûÏ¢µÄ½ÓÊÕÕßÍ¨¹ıÍ¶Æ±À´Ö§³ÖÏûÏ¢µÄ·¢ËÍÕß
 #define CLUSTERMSG_TYPE_FAILOVER_AUTH_REQUEST 5 /* May I failover? */
-// æ¶ˆæ¯çš„æ¥æ”¶è€…åŒæ„å‘æ¶ˆæ¯çš„å‘é€è€…æŠ•ç¥¨
+// ÏûÏ¢µÄ½ÓÊÕÕßÍ¬ÒâÏòÏûÏ¢µÄ·¢ËÍÕßÍ¶Æ±
 #define CLUSTERMSG_TYPE_FAILOVER_AUTH_ACK 6     /* Yes, you have my vote */
-// æ§½å¸ƒå±€å·²ç»å‘ç”Ÿå˜åŒ–ï¼Œæ¶ˆæ¯å‘é€è€…è¦æ±‚æ¶ˆæ¯æ¥æ”¶è€…è¿›è¡Œç›¸åº”çš„æ›´æ–°
+// ²Û²¼¾ÖÒÑ¾­·¢Éú±ä»¯£¬ÏûÏ¢·¢ËÍÕßÒªÇóÏûÏ¢½ÓÊÕÕß½øĞĞÏàÓ¦µÄ¸üĞÂ
 #define CLUSTERMSG_TYPE_UPDATE 7        /* Another node slots configuration */
-// ä¸ºäº†è¿›è¡Œæ‰‹åŠ¨æ•…éšœè½¬ç§»ï¼Œæš‚åœå„ä¸ªå®¢æˆ·ç«¯
+// ÎªÁË½øĞĞÊÖ¶¯¹ÊÕÏ×ªÒÆ£¬ÔİÍ£¸÷¸ö¿Í»§¶Ë
 #define CLUSTERMSG_TYPE_MFSTART 8       /* Pause clients for manual failover */
+
+#define CLUSTERMSG_TYPE_MODULE 9        /* Module cluster API message. */
+
+#define CLUSTERMSG_TYPE_COUNT 10        /* Total number of message types. */
+
+
+/* Flags that a module can set in order to prevent certain Redis Cluster
+ * features to be enabled. Useful when implementing a different distributed
+ * system on top of Redis Cluster message bus, using modules. */
+#define CLUSTER_MODULE_FLAG_NONE 0
+#define CLUSTER_MODULE_FLAG_NO_FAILOVER (1<<1)
+#define CLUSTER_MODULE_FLAG_NO_REDIRECTION (1<<2)
+
+/* This structure represent elements of node->fail_reports. */
+// Ã¿¸ö clusterNodeFailReport ½á¹¹±£´æÁËÒ»ÌõÆäËû½Úµã¶ÔÄ¿±ê½ÚµãµÄÏÂÏß±¨¸æ
+// £¨ÈÏÎªÄ¿±ê½ÚµãÒÑ¾­ÏÂÏß£©
+typedef struct clusterNodeFailReport {
+    // ±¨¸æÄ¿±ê½ÚµãÒÑ¾­ÏÂÏßµÄ½Úµã
+    struct clusterNode *node;  /* Node reporting the failure condition. */
+    // ×îºóÒ»´Î´Ó node ½ÚµãÊÕµ½ÏÂÏß±¨¸æµÄÊ±¼ä
+    // ³ÌĞòÊ¹ÓÃÕâ¸öÊ±¼ä´ÁÀ´¼ì²éÏÂÏß±¨¸æÊÇ·ñ¹ıÆÚ
+    mstime_t time;             /* Time of the last report from this node. */
+} clusterNodeFailReport;
+
+
+// ½Úµã×´Ì¬
+typedef struct clusterNode {
+    // ´´½¨½ÚµãµÄÊ±¼ä
+    mstime_t ctime; /* Node object creation time. */
+
+    // ½ÚµãµÄÃû×Ö£¬ÓÉ 40 ¸öÊ®Áù½øÖÆ×Ö·û×é³É
+    // ÀıÈç 68eef66df23420a5862208ef5b1a7005b806f2ff
+    char name[CLUSTER_NAMELEN]; /* Node name, hex string, sha1-size */
+
+    // ½Úµã±êÊ¶
+    // Ê¹ÓÃ¸÷ÖÖ²»Í¬µÄ±êÊ¶Öµ¼ÇÂ¼½ÚµãµÄ½ÇÉ«£¨±ÈÈçÖ÷½Úµã»òÕß´Ó½Úµã£©£¬
+    // ÒÔ¼°½ÚµãÄ¿Ç°Ëù´¦µÄ×´Ì¬£¨±ÈÈçÔÚÏß»òÕßÏÂÏß£©¡£
+    int flags;      /* CLUSTER_NODE_... */
+½Úµãµ±Ç°µÄÅäÖÃ¼ÍÔª£¬ÓÃÓÚÊµÏÖ¹ÊÕÏ×ªÒÆ
+    uint64_t configEpoch; /* Last configEpoch observed for this node */
+
+	// ÓÉÕâ¸ö½Úµã¸ºÔğ´¦ÀíµÄ²Û
+    // Ò»¹²ÓĞ REDIS_CLUSTER_SLOTS / 8 ¸ö×Ö½Ú³¤
+    // Ã¿¸ö×Ö½ÚµÄÃ¿¸öÎ»¼ÇÂ¼ÁËÒ»¸ö²ÛµÄ±£´æ×´Ì¬
+    // Î»µÄÖµÎª 1 ±íÊ¾²ÛÕıÓÉ±¾½Úµã´¦Àí£¬ÖµÎª 0 Ôò±íÊ¾²Û²¢·Ç±¾½Úµã´¦Àí
+    // ±ÈÈç slots[0] µÄµÚÒ»¸öÎ»±£´æÁË²Û 0 µÄ±£´æÇé¿ö
+    // slots[0] µÄµÚ¶ş¸öÎ»±£´æÁË²Û 1 µÄ±£´æÇé¿ö£¬ÒÔ´ËÀàÍÆ
+    unsigned char slots[CLUSTER_SLOTS/8]; /* slots handled by this node */
+
+
+    // ¸Ã½Úµã¸ºÔğ´¦ÀíµÄ²ÛĞÅÏ¢
+    sds slots_info; /* Slots info represented by string. */
+    // ¸Ã½Úµã¸ºÔğ´¦ÀíµÄ²ÛÊıÁ¿
+    int numslots;   /* Number of slots handled by this node */
+    // Èç¹û±¾½ÚµãÊÇÖ÷½Úµã£¬ÄÇÃ´ÓÃÕâ¸öÊôĞÔ¼ÇÂ¼´Ó½ÚµãµÄÊıÁ¿
+    int numslaves;  /* Number of slave nodes, if this is a master */
+    // Ö¸ÕëÊı×é£¬Ö¸Ïò¸÷¸ö´Ó½Úµã
+    struct clusterNode **slaves; /* pointers to slave nodes */
+
+    // Èç¹ûÕâÊÇÒ»¸ö´Ó½Úµã£¬ÄÇÃ´Ö¸ÏòÖ÷½Úµã
+    struct clusterNode *slaveof; /* pointer to the master node. Note that it
+                                    may be NULL even if the node is a slave
+                                    if we don't have the master node in our
+                                    tables. */
+
+    // ×îºóÒ»´Î·¢ËÍ PING ÃüÁîµÄÊ±¼ä
+    mstime_t ping_sent;      /* Unix time we sent latest ping */
+    // ×îºóÒ»´Î½ÓÊÕ PONG »Ø¸´µÄÊ±¼ä´Á
+    mstime_t pong_received;  /* Unix time we received the pong */
+    mstime_t data_received;  /* Unix time we received any data */
+
+    // ×îºóÒ»´Î±»ÉèÖÃÎª FAIL ×´Ì¬µÄÊ±¼ä
+    mstime_t fail_time;      /* Unix time when FAIL flag was set */
+    // ×îºóÒ»´Î¸øÄ³¸ö´Ó½ÚµãÍ¶Æ±µÄÊ±¼ä
+    mstime_t voted_time;     /* Last time we voted for a slave of this master */
+    // ×îºóÒ»´Î´ÓÕâ¸ö½Úµã½ÓÊÕµ½¸´ÖÆÆ«ÒÆÁ¿µÄÊ±¼ä
+    mstime_t repl_offset_time;  /* Unix time we received offset for this node */
+    mstime_t orphaned_time;     /* Starting time of orphaned master condition */
+
+    // Õâ¸ö½ÚµãµÄ¸´ÖÆÆ«ÒÆÁ¿
+    long long repl_offset;      /* Last known repl offset for this node. */
+
+   // ½ÚµãµÄ IP µØÖ·
+    char ip[NET_IP_STR_LEN];  /* Latest known IP address of this node */
+
+    // ½ÚµãµÄ¶Ë¿ÚºÅ
+    int port;                   /* Latest known clients port (TLS or plain). */
+    int pport;                  /* Latest known clients plaintext port. Only used
+                                   if the main clients port is for TLS. */
+    int cport;                  /* Latest known cluster port of this node. */
+    // ±£´æÁ¬½Ó½ÚµãËùĞèµÄÓĞ¹ØĞÅÏ¢
+    clusterLink *link;          /* TCP/IP link with this node */
+    // Ò»¸öÁ´±í£¬¼ÇÂ¼ÁËËùÓĞÆäËû½Úµã¶Ô¸Ã½ÚµãµÄÏÂÏß±¨¸æ
+    list *fail_reports;         /* List of nodes signaling this as failing */
+} clusterNode;
+
+// ¼¯Èº×´Ì¬£¬Ã¿¸ö½Úµã¶¼±£´æ×ÅÒ»¸öÕâÑùµÄ×´Ì¬£¬¼ÇÂ¼ÁËËüÃÇÑÛÖĞµÄ¼¯ÈºµÄÑù×Ó¡£
+// ÁíÍâ£¬ËäÈ»Õâ¸ö½á¹¹Ö÷ÒªÓÃÓÚ¼ÇÂ¼¼¯ÈºµÄÊôĞÔ£¬µ«ÊÇÎªÁË½ÚÔ¼×ÊÔ´£¬
+// ÓĞĞ©Óë½ÚµãÓĞ¹ØµÄÊôĞÔ£¬±ÈÈç slots_to_keys ¡¢ failover_auth_count 
+// Ò²±»·Åµ½ÁËÕâ¸ö½á¹¹ÀïÃæ¡£
+typedef struct clusterState {
+    // Ö¸Ïòµ±Ç°½ÚµãµÄÖ¸Õë
+    clusterNode *myself;  /* This node */
+
+    // ¼¯Èºµ±Ç°µÄÅäÖÃ¼ÍÔª£¬ÓÃÓÚÊµÏÖ¹ÊÕÏ×ªÒÆ
+    uint64_t currentEpoch;
+    int state;            /* CLUSTER_OK, CLUSTER_FAIL, ... */
+    // ¼¯Èºµ±Ç°µÄ×´Ì¬£ºÊÇÔÚÏß»¹ÊÇÏÂÏß
+    int state;            /* REDIS_CLUSTER_OK, REDIS_CLUSTER_FAIL, ... */
+
+    // ¼¯ÈºÖĞÖÁÉÙ´¦Àí×ÅÒ»¸ö²ÛµÄ½ÚµãµÄÊıÁ¿¡£
+    int size;             /* Num of master nodes with at least one slot */
+
+    // ¼¯Èº½ÚµãÃûµ¥£¨°üÀ¨ myself ½Úµã£©
+    // ×ÖµäµÄ¼üÎª½ÚµãµÄÃû×Ö£¬×ÖµäµÄÖµÎª clusterNode ½á¹¹
+    dict *nodes;          /* Hash table of name -> clusterNode structures */
+
+    // ½ÚµãºÚÃûµ¥£¬ÓÃÓÚ CLUSTER FORGET ÃüÁî
+    // ·ÀÖ¹±» FORGET µÄÃüÁîÖØĞÂ±»Ìí¼Óµ½¼¯ÈºÀïÃæ
+    // £¨²»¹ıÏÖÔÚËÆºõÃ»ÓĞÔÚÊ¹ÓÃµÄÑù×Ó£¬ÒÑ·ÏÆú£¿»¹ÊÇÉĞÎ´ÊµÏÖ£¿£©
+    dict *nodes_black_list; /* Nodes we don't re-add for a few seconds. */
+
+
+    // ¼ÇÂ¼Òª´Óµ±Ç°½ÚµãÇ¨ÒÆµ½Ä¿±ê½ÚµãµÄ²Û£¬ÒÔ¼°Ç¨ÒÆµÄÄ¿±ê½Úµã
+    // migrating_slots_to[i] = NULL ±íÊ¾²Û i Î´±»Ç¨ÒÆ
+    // migrating_slots_to[i] = clusterNode_A ±íÊ¾²Û i Òª´Ó±¾½ÚµãÇ¨ÒÆÖÁ½Úµã A
+    clusterNode *migrating_slots_to[CLUSTER_SLOTS];
+
+
+    // ¼ÇÂ¼Òª´ÓÔ´½ÚµãÇ¨ÒÆµ½±¾½ÚµãµÄ²Û£¬ÒÔ¼°½øĞĞÇ¨ÒÆµÄÔ´½Úµã
+    // importing_slots_from[i] = NULL ±íÊ¾²Û i Î´½øĞĞµ¼Èë
+    // importing_slots_from[i] = clusterNode_A ±íÊ¾Õı´Ó½Úµã A ÖĞµ¼Èë²Û i
+    clusterNode *importing_slots_from[CLUSTER_SLOTS];
+
+
+    // ¸ºÔğ´¦Àí¸÷¸ö²ÛµÄ½Úµã
+    // ÀıÈç slots[i] = clusterNode_A ±íÊ¾²Û i ÓÉ½Úµã A ´¦Àí
+    clusterNode *slots[CLUSTER_SLOTS];
+
+
+    uint64_t slots_keys_count[CLUSTER_SLOTS];
+
+
+
+    // ÌøÔ¾±í£¬±íÖĞÒÔ²Û×÷Îª·ÖÖµ£¬¼ü×÷Îª³ÉÔ±£¬¶Ô²Û½øĞĞÓĞĞòÅÅĞò
+    // µ±ĞèÒª¶ÔÄ³Ğ©²Û½øĞĞÇø¼ä£¨range£©²Ù×÷Ê±£¬Õâ¸öÌøÔ¾±í¿ÉÒÔÌá¹©·½±ã
+    // ¾ßÌå²Ù×÷¶¨ÒåÔÚ db.c ÀïÃæ
+    rax *slots_to_keys;
+    /* The following fields are used to take the slave state on elections. */
+    // ÒÔÏÂÕâĞ©Óò±»ÓÃÓÚ½øĞĞ¹ÊÕÏ×ªÒÆÑ¡¾Ù
+
+    // ÉÏ´ÎÖ´ĞĞÑ¡¾Ù»òÕßÏÂ´ÎÖ´ĞĞÑ¡¾ÙµÄÊ±¼ä
+    mstime_t failover_auth_time; /* Time of previous or next election. */
+
+    // ½Úµã»ñµÃµÄÍ¶Æ±ÊıÁ¿
+    int failover_auth_count;    /* Number of votes received so far. */
+
+    // Èç¹ûÖµÎª 1 £¬±íÊ¾±¾½ÚµãÒÑ¾­ÏòÆäËû½Úµã·¢ËÍÁËÍ¶Æ±ÇëÇó
+    int failover_auth_sent;     /* True if we already asked for votes. */
+
+    int failover_auth_rank;     /* This slave rank for current auth request. */
+    uint64_t failover_auth_epoch; /* Epoch of the current election. */
+    int cant_failover_reason;   /* Why a slave is currently not able to
+                                   failover. See the CANT_FAILOVER_* macros. */
+    /* Manual failover state in common. */
+    /* ¹²ÓÃµÄÊÖ¶¯¹ÊÕÏ×ªÒÆ×´Ì¬ */
+
+    // ÊÖ¶¯¹ÊÕÏ×ªÒÆÖ´ĞĞµÄÊ±¼äÏŞÖÆ
+    mstime_t mf_end;            /* Manual failover time limit (ms unixtime).
+                                   It is zero if there is no MF in progress. */
+    /* Manual failover state of master. */
+    /* Ö÷·şÎñÆ÷µÄÊÖ¶¯¹ÊÕÏ×ªÒÆ×´Ì¬ */
+    clusterNode *mf_slave;      /* Slave performing the manual failover. */
+    /* Manual failover state of slave. */
+    /* ´Ó·şÎñÆ÷µÄÊÖ¶¯¹ÊÕÏ×ªÒÆ×´Ì¬ */
+    long long mf_master_offset; /* Master offset the slave needs to start MF
+                                   or -1 if still not received. */
+    // Ö¸Ê¾ÊÖ¶¯¹ÊÕÏ×ªÒÆÊÇ·ñ¿ÉÒÔ¿ªÊ¼µÄ±êÖ¾Öµ
+    // ÖµÎª·Ç 0 Ê±±íÊ¾¸÷¸öÖ÷·şÎñÆ÷¿ÉÒÔ¿ªÊ¼Í¶Æ±
+    int mf_can_start;           /* If non-zero signal that the manual failover
+                                   can start requesting masters vote. */
+
+    /* The followign fields are uesd by masters to take state on elections. */
+    /* ÒÔÏÂÕâĞ©ÓòÓÉÖ÷·şÎñÆ÷Ê¹ÓÃ£¬ÓÃÓÚ¼ÇÂ¼Ñ¡¾ÙÊ±µÄ×´Ì¬ */
+    // ¼¯Èº×îºóÒ»´Î½øĞĞÍ¶Æ±µÄ¼ÍÔª
+    uint64_t lastVoteEpoch;     /* Epoch of the last vote granted. */
+
+    // ÔÚ½øÈëÏÂ¸öÊÂ¼şÑ­»·Ö®Ç°Òª×öµÄÊÂÇé£¬ÒÔ¸÷¸ö flag À´¼ÇÂ¼
+    int todo_before_sleep; /* Things to do in clusterBeforeSleep(). */
+    /* Messages received and sent by type. */
+
+   // Í¨¹ı cluster Á¬½Ó·¢ËÍµÄÏûÏ¢ÊıÁ¿
+    long long stats_bus_messages_sent[CLUSTERMSG_TYPE_COUNT];
+
+    // Í¨¹ı cluster ½ÓÊÕµ½µÄÏûÏ¢ÊıÁ¿
+    long long stats_bus_messages_received[CLUSTERMSG_TYPE_COUNT];
+    long long stats_pfail_nodes;    /* Number of nodes in PFAIL status,
+                                       excluding nodes without address. */
+} clusterState;
+
+/* Redis cluster messages header */
 
 /* Initially we don't know our "name", but we'll find it once we connect
  * to the first node, using the getsockname() function. Then we'll use this
  * address for all the next messages. */
-
 typedef struct {
 
-    // èŠ‚ç‚¹çš„åå­—
-    // åœ¨åˆšå¼€å§‹çš„æ—¶å€™ï¼ŒèŠ‚ç‚¹çš„åå­—ä¼šæ˜¯éšæœºçš„
-    // å½“ MEET ä¿¡æ¯å‘é€å¹¶å¾—åˆ°å›å¤ä¹‹åï¼Œé›†ç¾¤å°±ä¼šä¸ºèŠ‚ç‚¹è®¾ç½®æ­£å¼çš„åå­—
-    char nodename[REDIS_CLUSTER_NAMELEN];
-
-    // æœ€åä¸€æ¬¡å‘è¯¥èŠ‚ç‚¹å‘é€ PING æ¶ˆæ¯çš„æ—¶é—´æˆ³
+    // ½ÚµãµÄÃû×Ö
+    // ÔÚ¸Õ¿ªÊ¼µÄÊ±ºò£¬½ÚµãµÄÃû×Ö»áÊÇËæ»úµÄ
+    // µ± MEET ĞÅÏ¢·¢ËÍ²¢µÃµ½»Ø¸´Ö®ºó£¬¼¯Èº¾Í»áÎª½ÚµãÉèÖÃÕıÊ½µÄÃû×Ö
+    char nodename[CLUSTER_NAMELEN];
+    // ×îºóÒ»´ÎÏò¸Ã½Úµã·¢ËÍ PING ÏûÏ¢µÄÊ±¼ä´Á
     uint32_t ping_sent;
-
-    // æœ€åä¸€æ¬¡ä»è¯¥èŠ‚ç‚¹æ¥æ”¶åˆ° PONG æ¶ˆæ¯çš„æ—¶é—´æˆ³
+    // ×îºóÒ»´Î´Ó¸Ã½Úµã½ÓÊÕµ½ PONG ÏûÏ¢µÄÊ±¼ä´Á
     uint32_t pong_received;
+    // ½ÚµãµÄ IP µØÖ·
+    char ip[NET_IP_STR_LEN];  /* IP address last time it was seen */
+    // ½ÚµãµÄ¶Ë¿ÚºÅ
+    uint16_t port;              /* base port last time it was seen */
 
-    // èŠ‚ç‚¹çš„ IP åœ°å€
-    char ip[REDIS_IP_STR_LEN];    /* IP address last time it was seen */
+    uint16_t cport;             /* cluster port last time it was seen */
 
-    // èŠ‚ç‚¹çš„ç«¯å£å·
-    uint16_t port;  /* port last time it was seen */
+    // ½ÚµãµÄ±êÊ¶Öµ
+    uint16_t flags;             /* node->flags copy */
+    uint16_t pport;             /* plaintext-port, when base port is TLS */
 
-    // èŠ‚ç‚¹çš„æ ‡è¯†å€¼
-    uint16_t flags;
-
-    // å¯¹é½å­—èŠ‚ï¼Œä¸ä½¿ç”¨
-    uint32_t notused; /* for 64 bit alignment */
-
+    // ¶ÔÆë×Ö½Ú£¬²»Ê¹ÓÃ
+    uint16_t notused1;
 } clusterMsgDataGossip;
 
 typedef struct {
 
-    // ä¸‹çº¿èŠ‚ç‚¹çš„åå­—
-    char nodename[REDIS_CLUSTER_NAMELEN];
-
+    // ÏÂÏß½ÚµãµÄÃû×Ö
+    char nodename[CLUSTER_NAMELEN];
 } clusterMsgDataFail;
 
 typedef struct {
-
-    // é¢‘é“åé•¿åº¦
+    // ÆµµÀÃû³¤¶È
     uint32_t channel_len;
-
-    // æ¶ˆæ¯é•¿åº¦
+   // ÏûÏ¢³¤¶È
     uint32_t message_len;
 
-    // æ¶ˆæ¯å†…å®¹ï¼Œæ ¼å¼ä¸º é¢‘é“å+æ¶ˆæ¯
-    // bulk_data[0:channel_len-1] ä¸ºé¢‘é“å
-    // bulk_data[channel_len:channel_len+message_len-1] ä¸ºæ¶ˆæ¯
-    unsigned char bulk_data[8]; /* defined as 8 just for alignment concerns. */
-
+    // ÏûÏ¢ÄÚÈİ£¬¸ñÊ½Îª ÆµµÀÃû+ÏûÏ¢
+    // bulk_data[0:channel_len-1] ÎªÆµµÀÃû
+    // bulk_data[channel_len:channel_len+message_len-1] ÎªÏûÏ¢
+    unsigned char bulk_data[8]; /* 8 bytes just as placeholder. */
 } clusterMsgDataPublish;
 
 typedef struct {
-
-    // èŠ‚ç‚¹çš„é…ç½®çºªå…ƒ
+    // ½ÚµãµÄÅäÖÃ¼ÍÔª
     uint64_t configEpoch; /* Config epoch of the specified instance. */
 
-    // èŠ‚ç‚¹çš„åå­—
-    char nodename[REDIS_CLUSTER_NAMELEN]; /* Name of the slots owner. */
+    // ½ÚµãµÄÃû×Ö
+    char nodename[CLUSTER_NAMELEN]; /* Name of the slots owner. */
 
-    // èŠ‚ç‚¹çš„æ§½å¸ƒå±€
-    unsigned char slots[REDIS_CLUSTER_SLOTS/8]; /* Slots bitmap. */
-
+ // ½ÚµãµÄ²Û²¼¾Ö
+    unsigned char slots[CLUSTER_SLOTS/8]; /* Slots bitmap. */
 } clusterMsgDataUpdate;
 
-union clusterMsgData {
+typedef struct {
+    uint64_t module_id;     /* ID of the sender module. */
+    uint32_t len;           /* ID of the sender module. */
+    uint8_t type;           /* Type from 0 to 255. */
+    unsigned char bulk_data[3]; /* 3 bytes just as placeholder. */
+} clusterMsgModule;
 
+union clusterMsgData {
     /* PING, MEET and PONG */
     struct {
         /* Array of N clusterMsgDataGossip structures */
-        // æ¯æ¡æ¶ˆæ¯éƒ½åŒ…å«ä¸¤ä¸ª clusterMsgDataGossip ç»“æ„
+        // Ã¿ÌõÏûÏ¢¶¼°üº¬Á½¸ö clusterMsgDataGossip ½á¹¹
         clusterMsgDataGossip gossip[1];
     } ping;
 
@@ -422,64 +445,68 @@ union clusterMsgData {
         clusterMsgDataUpdate nodecfg;
     } update;
 
+    /* MODULE */
+    struct {
+        clusterMsgModule msg;
+    } module;
 };
 
-// ç”¨æ¥è¡¨ç¤ºé›†ç¾¤æ¶ˆæ¯çš„ç»“æ„ï¼ˆæ¶ˆæ¯å¤´ï¼Œheaderï¼‰
+#define CLUSTER_PROTO_VER 1 /* Cluster bus protocol version. */
+// ÓÃÀ´±íÊ¾¼¯ÈºÏûÏ¢µÄ½á¹¹£¨ÏûÏ¢Í·£¬header£©
+
 typedef struct {
-    char sig[4];        /* Siganture "RCmb" (Redis Cluster message bus). */
-    // æ¶ˆæ¯çš„é•¿åº¦ï¼ˆåŒ…æ‹¬è¿™ä¸ªæ¶ˆæ¯å¤´çš„é•¿åº¦å’Œæ¶ˆæ¯æ­£æ–‡çš„é•¿åº¦ï¼‰
+    char sig[4];        /* Signature "RCmb" (Redis Cluster message bus). */
+    // ÏûÏ¢µÄ³¤¶È£¨°üÀ¨Õâ¸öÏûÏ¢Í·µÄ³¤¶ÈºÍÏûÏ¢ÕıÎÄµÄ³¤¶È£©
     uint32_t totlen;    /* Total length of this message */
-    uint16_t ver;       /* Protocol version, currently set to 0. */
-    uint16_t notused0;  /* 2 bytes not used. */
-
-    // æ¶ˆæ¯çš„ç±»å‹
+    uint16_t ver;       /* Protocol version, currently set to 1. */
+    uint16_t port;      /* TCP base port number. */
+    // ÏûÏ¢µÄÀàĞÍ
     uint16_t type;      /* Message type */
-
-    // æ¶ˆæ¯æ­£æ–‡åŒ…å«çš„èŠ‚ç‚¹ä¿¡æ¯æ•°é‡
-    // åªåœ¨å‘é€ MEET ã€ PING å’Œ PONG è¿™ä¸‰ç§ Gossip åè®®æ¶ˆæ¯æ—¶ä½¿ç”¨
+    // ÏûÏ¢ÕıÎÄ°üº¬µÄ½ÚµãĞÅÏ¢ÊıÁ¿
+    // Ö»ÔÚ·¢ËÍ MEET ¡¢ PING ºÍ PONG ÕâÈıÖÖ Gossip Ğ­ÒéÏûÏ¢Ê±Ê¹ÓÃ
     uint16_t count;     /* Only used for some kind of messages. */
-
-    // æ¶ˆæ¯å‘é€è€…çš„é…ç½®çºªå…ƒ
+    // ÏûÏ¢·¢ËÍÕßµÄÅäÖÃ¼ÍÔª
     uint64_t currentEpoch;  /* The epoch accordingly to the sending node. */
 
-    // å¦‚æœæ¶ˆæ¯å‘é€è€…æ˜¯ä¸€ä¸ªä¸»èŠ‚ç‚¹ï¼Œé‚£ä¹ˆè¿™é‡Œè®°å½•çš„æ˜¯æ¶ˆæ¯å‘é€è€…çš„é…ç½®çºªå…ƒ
-    // å¦‚æœæ¶ˆæ¯å‘é€è€…æ˜¯ä¸€ä¸ªä»èŠ‚ç‚¹ï¼Œé‚£ä¹ˆè¿™é‡Œè®°å½•çš„æ˜¯æ¶ˆæ¯å‘é€è€…æ­£åœ¨å¤åˆ¶çš„ä¸»èŠ‚ç‚¹çš„é…ç½®çºªå…ƒ
+    // Èç¹ûÏûÏ¢·¢ËÍÕßÊÇÒ»¸öÖ÷½Úµã£¬ÄÇÃ´ÕâÀï¼ÇÂ¼µÄÊÇÏûÏ¢·¢ËÍÕßµÄÅäÖÃ¼ÍÔª
+    // Èç¹ûÏûÏ¢·¢ËÍÕßÊÇÒ»¸ö´Ó½Úµã£¬ÄÇÃ´ÕâÀï¼ÇÂ¼µÄÊÇÏûÏ¢·¢ËÍÕßÕıÔÚ¸´ÖÆµÄÖ÷½ÚµãµÄÅäÖÃ¼ÍÔª
     uint64_t configEpoch;   /* The config epoch if it's a master, or the last
                                epoch advertised by its master if it is a
                                slave. */
 
-    // èŠ‚ç‚¹çš„å¤åˆ¶åç§»é‡
+    // ½ÚµãµÄ¸´ÖÆÆ«ÒÆÁ¿
     uint64_t offset;    /* Master replication offset if node is a master or
                            processed replication offset if node is a slave. */
 
-    // æ¶ˆæ¯å‘é€è€…çš„åå­—ï¼ˆIDï¼‰
-    char sender[REDIS_CLUSTER_NAMELEN]; /* Name of the sender node */
 
-    // æ¶ˆæ¯å‘é€è€…ç›®å‰çš„æ§½æŒ‡æ´¾ä¿¡æ¯
-    unsigned char myslots[REDIS_CLUSTER_SLOTS/8];
+    // ÏûÏ¢·¢ËÍÕßµÄÃû×Ö£¨ID£©
+    char sender[CLUSTER_NAMELEN]; /* Name of the sender node */
 
-    // å¦‚æœæ¶ˆæ¯å‘é€è€…æ˜¯ä¸€ä¸ªä»èŠ‚ç‚¹ï¼Œé‚£ä¹ˆè¿™é‡Œè®°å½•çš„æ˜¯æ¶ˆæ¯å‘é€è€…æ­£åœ¨å¤åˆ¶çš„ä¸»èŠ‚ç‚¹çš„åå­—
-    // å¦‚æœæ¶ˆæ¯å‘é€è€…æ˜¯ä¸€ä¸ªä¸»èŠ‚ç‚¹ï¼Œé‚£ä¹ˆè¿™é‡Œè®°å½•çš„æ˜¯ REDIS_NODE_NULL_NAME
-    // ï¼ˆä¸€ä¸ª 40 å­—èŠ‚é•¿ï¼Œå€¼å…¨ä¸º 0 çš„å­—èŠ‚æ•°ç»„ï¼‰
-    char slaveof[REDIS_CLUSTER_NAMELEN];
 
+
+    // ÏûÏ¢·¢ËÍÕßÄ¿Ç°µÄ²ÛÖ¸ÅÉĞÅÏ¢
+    unsigned char myslots[CLUSTER_SLOTS/8];
+
+
+    // Èç¹ûÏûÏ¢·¢ËÍÕßÊÇÒ»¸ö´Ó½Úµã£¬ÄÇÃ´ÕâÀï¼ÇÂ¼µÄÊÇÏûÏ¢·¢ËÍÕßÕıÔÚ¸´ÖÆµÄÖ÷½ÚµãµÄÃû×Ö
+    // Èç¹ûÏûÏ¢·¢ËÍÕßÊÇÒ»¸öÖ÷½Úµã£¬ÄÇÃ´ÕâÀï¼ÇÂ¼µÄÊÇ REDIS_NODE_NULL_NAME
+    // £¨Ò»¸ö 40 ×Ö½Ú³¤£¬ÖµÈ«Îª 0 µÄ×Ö½ÚÊı×é£©
+    char slaveof[CLUSTER_NAMELEN];
+    char myip[NET_IP_STR_LEN];    /* Sender IP, if not all zeroed. */
     char notused1[32];  /* 32 bytes reserved for future usage. */
 
-    // æ¶ˆæ¯å‘é€è€…çš„ç«¯å£å·
-    uint16_t port;      /* Sender TCP base port */
+    // ÏûÏ¢·¢ËÍÕßµÄ¶Ë¿ÚºÅ
+    uint16_t pport;      /* Sender TCP plaintext port, if base port is TLS */
+    uint16_t cport;      /* Sender TCP cluster bus port */
 
-    // æ¶ˆæ¯å‘é€è€…çš„æ ‡è¯†å€¼
-    uint16_t flags;     /* Sender node flags */
-
-    // æ¶ˆæ¯å‘é€è€…æ‰€å¤„é›†ç¾¤çš„çŠ¶æ€
+    // ÏûÏ¢·¢ËÍÕßµÄ±êÊ¶Öµ
+    uint16_t flags;      /* Sender node flags */
+    // ÏûÏ¢·¢ËÍÕßËù´¦¼¯ÈºµÄ×´Ì¬
     unsigned char state; /* Cluster state from the POV of the sender */
-
-    // æ¶ˆæ¯æ ‡å¿—
+    // ÏûÏ¢±êÖ¾
     unsigned char mflags[3]; /* Message flags: CLUSTERMSG_FLAG[012]_... */
-
-    // æ¶ˆæ¯çš„æ­£æ–‡ï¼ˆæˆ–è€…è¯´ï¼Œå†…å®¹ï¼‰
+    // ÏûÏ¢µÄÕıÎÄ£¨»òÕßËµ£¬ÄÚÈİ£©
     union clusterMsgData data;
-
 } clusterMsg;
 
 #define CLUSTERMSG_MIN_LEN (sizeof(clusterMsg)-sizeof(union clusterMsgData))
@@ -491,6 +518,9 @@ typedef struct {
                                             master is up. */
 
 /* ---------------------- API exported outside cluster.c -------------------- */
-clusterNode *getNodeByQuery(redisClient *c, struct redisCommand *cmd, robj **argv, int argc, int *hashslot, int *ask);
+clusterNode *getNodeByQuery(client *c, struct redisCommand *cmd, robj **argv, int argc, int *hashslot, int *ask);
+int clusterRedirectBlockedClientIfNeeded(client *c);
+void clusterRedirectClient(client *c, clusterNode *n, int hashslot, int error_code);
+unsigned long getClusterConnectionsCount(void);
 
-#endif /* __REDIS_CLUSTER_H */
+#endif /* __CLUSTER_H */

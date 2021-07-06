@@ -27,60 +27,136 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "redis.h"
+#include "server.h"
+
+int clientSubscriptionsCount(client *c);
+
+/*-----------------------------------------------------------------------------
+ * Pubsub client replies API
+ *----------------------------------------------------------------------------*/
+
+/* Send a pubsub message of type "message" to the client.
+ * Normally 'msg' is a Redis object containing the string to send as
+ * message. However if the caller sets 'msg' as NULL, it will be able
+ * to send a special message (for instance an Array type) by using the
+ * addReply*() API family. */
+void addReplyPubsubMessage(client *c, robj *channel, robj *msg) {
+    if (c->resp == 2)
+        addReply(c,shared.mbulkhdr[3]);
+    else
+        addReplyPushLen(c,3);
+    addReply(c,shared.messagebulk);
+    addReplyBulk(c,channel);
+    if (msg) addReplyBulk(c,msg);
+}
+
+/* Send a pubsub message of type "pmessage" to the client. The difference
+ * with the "message" type delivered by addReplyPubsubMessage() is that
+ * this message format also includes the pattern that matched the message. */
+void addReplyPubsubPatMessage(client *c, robj *pat, robj *channel, robj *msg) {
+    if (c->resp == 2)
+        addReply(c,shared.mbulkhdr[4]);
+    else
+        addReplyPushLen(c,4);
+    addReply(c,shared.pmessagebulk);
+    addReplyBulk(c,pat);
+    addReplyBulk(c,channel);
+    addReplyBulk(c,msg);
+}
+
+/* Send the pubsub subscription notification to the client. */
+void addReplyPubsubSubscribed(client *c, robj *channel) {
+    if (c->resp == 2)
+        addReply(c,shared.mbulkhdr[3]);
+    else
+        addReplyPushLen(c,3);
+    addReply(c,shared.subscribebulk);
+    addReplyBulk(c,channel);
+    addReplyLongLong(c,clientSubscriptionsCount(c));
+}
+
+/* Send the pubsub unsubscription notification to the client.
+ * Channel can be NULL: this is useful when the client sends a mass
+ * unsubscribe command but there are no channels to unsubscribe from: we
+ * still send a notification. */
+void addReplyPubsubUnsubscribed(client *c, robj *channel) {
+    if (c->resp == 2)
+        addReply(c,shared.mbulkhdr[3]);
+    else
+        addReplyPushLen(c,3);
+    addReply(c,shared.unsubscribebulk);
+    if (channel)
+        addReplyBulk(c,channel);
+    else
+        addReplyNull(c);
+    addReplyLongLong(c,clientSubscriptionsCount(c));
+}
+
+/* Send the pubsub pattern subscription notification to the client. */
+void addReplyPubsubPatSubscribed(client *c, robj *pattern) {
+    if (c->resp == 2)
+        addReply(c,shared.mbulkhdr[3]);
+    else
+        addReplyPushLen(c,3);
+    addReply(c,shared.psubscribebulk);
+    addReplyBulk(c,pattern);
+    addReplyLongLong(c,clientSubscriptionsCount(c));
+}
+
+/* Send the pubsub pattern unsubscription notification to the client.
+ * Pattern can be NULL: this is useful when the client sends a mass
+ * punsubscribe command but there are no pattern to unsubscribe from: we
+ * still send a notification. */
+void addReplyPubsubPatUnsubscribed(client *c, robj *pattern) {
+    if (c->resp == 2)
+        addReply(c,shared.mbulkhdr[3]);
+    else
+        addReplyPushLen(c,3);
+    addReply(c,shared.punsubscribebulk);
+    if (pattern)
+        addReplyBulk(c,pattern);
+    else
+        addReplyNull(c);
+    addReplyLongLong(c,clientSubscriptionsCount(c));
+}
 
 /*-----------------------------------------------------------------------------
  * Pubsub low level API
  *----------------------------------------------------------------------------*/
 
-/*
- * é‡Šæ”¾ç»™å®šçš„æ¨¡å¼ p
- */
-void freePubsubPattern(void *p) {
-    pubsubPattern *pat = p;
-
-    decrRefCount(pat->pattern);
-    zfree(pat);
-}
-
-/*
- * å¯¹æ¯”æ¨¡å¼ a å’Œ b æ˜¯å¦ç›¸åŒï¼Œç›¸åŒè¿”å›ž 1 ï¼Œä¸ç›¸åŒè¿”å›ž 0 ã€‚
- */
-int listMatchPubsubPattern(void *a, void *b) {
-    pubsubPattern *pa = a, *pb = b;
-
-    return (pa->client == pb->client) &&
-           (equalStringObjects(pa->pattern,pb->pattern));
+/* Return the number of channels + patterns a client is subscribed to. */
+int clientSubscriptionsCount(client *c) {
+    return dictSize(c->pubsub_channels)+
+           listLength(c->pubsub_patterns);
 }
 
 /* Subscribe a client to a channel. Returns 1 if the operation succeeded, or
  * 0 if the client was already subscribed to that channel. 
  *
- * è®¾ç½®å®¢æˆ·ç«¯ c è®¢é˜…é¢‘é“ channel ã€‚
+ * ÉèÖÃ¿Í»§¶Ë c ¶©ÔÄÆµµÀ channel ¡£
  *
- * è®¢é˜…æˆåŠŸè¿”å›ž 1 ï¼Œå¦‚æžœå®¢æˆ·ç«¯å·²ç»è®¢é˜…äº†è¯¥é¢‘é“ï¼Œé‚£ä¹ˆè¿”å›ž 0 ã€‚
+ * ¶©ÔÄ³É¹¦·µ»Ø 1 £¬Èç¹û¿Í»§¶ËÒÑ¾­¶©ÔÄÁË¸ÃÆµµÀ£¬ÄÇÃ´·µ»Ø 0 ¡£
  */
-int pubsubSubscribeChannel(redisClient *c, robj *channel) {
+int pubsubSubscribeChannel(client *c, robj *channel) {
     dictEntry *de;
     list *clients = NULL;
     int retval = 0;
 
     /* Add the channel to the client -> channels hash table */
-    // å°† channels å¡«æŽ¥åˆ° c->pubsub_channels çš„é›†åˆä¸­ï¼ˆå€¼ä¸º NULL çš„å­—å…¸è§†ä¸ºé›†åˆï¼‰
+    // ½« channels Ìî½Óµ½ c->pubsub_channels µÄ¼¯ºÏÖÐ£¨ÖµÎª NULL µÄ×ÖµäÊÓÎª¼¯ºÏ£©
     if (dictAdd(c->pubsub_channels,channel,NULL) == DICT_OK) {
         retval = 1;
         incrRefCount(channel);
-
-        // å…³è”ç¤ºæ„å›¾
+        // ¹ØÁªÊ¾ÒâÍ¼
         // {
-        //  é¢‘é“å        è®¢é˜…é¢‘é“çš„å®¢æˆ·ç«¯
+        //  ÆµµÀÃû        ¶©ÔÄÆµµÀµÄ¿Í»§¶Ë
         //  'channel-a' : [c1, c2, c3],
         //  'channel-b' : [c5, c2, c1],
         //  'channel-c' : [c10, c2, c1]
         // }
         /* Add the client to the channel -> list of clients hash table */
-        // ä»Ž pubsub_channels å­—å…¸ä¸­å–å‡ºä¿å­˜ç€æ‰€æœ‰è®¢é˜…äº† channel çš„å®¢æˆ·ç«¯çš„é“¾è¡¨
-        // å¦‚æžœ channel ä¸å­˜åœ¨äºŽå­—å…¸ï¼Œé‚£ä¹ˆæ·»åŠ è¿›åŽ»
+        // ´Ó pubsub_channels ×ÖµäÖÐÈ¡³ö±£´æ×ÅËùÓÐ¶©ÔÄÁË channel µÄ¿Í»§¶ËµÄÁ´±í
+        // Èç¹û channel ²»´æÔÚÓÚ×Öµä£¬ÄÇÃ´Ìí¼Ó½øÈ¥
         de = dictFind(server.pubsub_channels,channel);
         if (de == NULL) {
             clients = listCreate();
@@ -89,71 +165,63 @@ int pubsubSubscribeChannel(redisClient *c, robj *channel) {
         } else {
             clients = dictGetVal(de);
         }
-
         // before:
         // 'channel' : [c1, c2]
         // after:
         // 'channel' : [c1, c2, c3]
-        // å°†å®¢æˆ·ç«¯æ·»åŠ åˆ°é“¾è¡¨çš„æœ«å°¾
+        // ½«¿Í»§¶ËÌí¼Óµ½Á´±íµÄÄ©Î²
         listAddNodeTail(clients,c);
     }
-
     /* Notify the client */
-    // å›žå¤å®¢æˆ·ç«¯ã€‚
-    // ç¤ºä¾‹ï¼š
+  // »Ø¸´¿Í»§¶Ë¡£
+    // Ê¾Àý£º
     // redis 127.0.0.1:6379> SUBSCRIBE xxx
     // Reading messages... (press Ctrl-C to quit)
     // 1) "subscribe"
     // 2) "xxx"
     // 3) (integer) 1
-    addReply(c,shared.mbulkhdr[3]);
-    // "subscribe\n" å­—ç¬¦ä¸²
-    addReply(c,shared.subscribebulk);
-    // è¢«è®¢é˜…çš„å®¢æˆ·ç«¯
-    addReplyBulk(c,channel);
-    // å®¢æˆ·ç«¯è®¢é˜…çš„é¢‘é“å’Œæ¨¡å¼æ€»æ•°
-    addReplyLongLong(c,dictSize(c->pubsub_channels)+listLength(c->pubsub_patterns));
-
+ 	// "subscribe\n" ×Ö·û´®
+    // ±»¶©ÔÄµÄ¿Í»§¶Ë
+    // ¿Í»§¶Ë¶©ÔÄµÄÆµµÀºÍÄ£Ê½×ÜÊý
+    addReplyPubsubSubscribed(c,channel);
     return retval;
 }
 
 /* Unsubscribe a client from a channel. Returns 1 if the operation succeeded, or
  * 0 if the client was not subscribed to the specified channel. 
  *
- * å®¢æˆ·ç«¯ c é€€è®¢é¢‘é“ channel ã€‚
+ * ¿Í»§¶Ë c ÍË¶©ÆµµÀ channel ¡£
  *
- * å¦‚æžœå–æ¶ˆæˆåŠŸè¿”å›ž 1 ï¼Œå¦‚æžœå› ä¸ºå®¢æˆ·ç«¯æœªè®¢é˜…é¢‘é“ï¼Œè€Œé€ æˆå–æ¶ˆå¤±è´¥ï¼Œè¿”å›ž 0 ã€‚
+ * Èç¹ûÈ¡Ïû³É¹¦·µ»Ø 1 £¬Èç¹ûÒòÎª¿Í»§¶ËÎ´¶©ÔÄÆµµÀ£¬¶øÔì³ÉÈ¡ÏûÊ§°Ü£¬·µ»Ø 0 ¡£
  */
-int pubsubUnsubscribeChannel(redisClient *c, robj *channel, int notify) {
+int pubsubUnsubscribeChannel(client *c, robj *channel, int notify) {
     dictEntry *de;
     list *clients;
     listNode *ln;
     int retval = 0;
 
     /* Remove the channel from the client -> channels hash table */
-    // å°†é¢‘é“ channel ä»Ž client->channels å­—å…¸ä¸­ç§»é™¤
+    // ½«ÆµµÀ channel ´Ó client->channels ×ÖµäÖÐÒÆ³ý
     incrRefCount(channel); /* channel may be just a pointer to the same object
                             we have in the hash tables. Protect it... */
-    // ç¤ºæ„å›¾ï¼š
+    // Ê¾ÒâÍ¼£º
     // before:
     // {
     //  'channel-x': NULL,
     //  'channel-y': NULL,
     //  'channel-z': NULL,
     // }
-    // after unsubscribe channel-y ï¼š
+    // after unsubscribe channel-y £º
     // {
     //  'channel-x': NULL,
     //  'channel-z': NULL,
     // }
     if (dictDelete(c->pubsub_channels,channel) == DICT_OK) {
-
-        // channel ç§»é™¤æˆåŠŸï¼Œè¡¨ç¤ºå®¢æˆ·ç«¯è®¢é˜…äº†è¿™ä¸ªé¢‘é“ï¼Œæ‰§è¡Œä»¥ä¸‹ä»£ç 
-
+        // channel ÒÆ³ý³É¹¦£¬±íÊ¾¿Í»§¶Ë¶©ÔÄÁËÕâ¸öÆµµÀ£¬Ö´ÐÐÒÔÏÂ´úÂë
         retval = 1;
         /* Remove the client from the channel -> clients list hash table */
-        // ä»Ž channel->clients çš„ clients é“¾è¡¨ä¸­ï¼Œç§»é™¤ client 
-        // ç¤ºæ„å›¾ï¼š
+        // ´Ó channel->clients µÄ clients Á´±íÖÐ£¬ÒÆ³ý client 
+        // Ê¾ÒâÍ¼£º
         // before:
         // {
         //  'channel-x' : [c1, c2, c3],
@@ -163,14 +231,13 @@ int pubsubUnsubscribeChannel(redisClient *c, robj *channel, int notify) {
         //  'channel-x' : [c1, c3]
         // }
         de = dictFind(server.pubsub_channels,channel);
-        redisAssertWithInfo(c,NULL,de != NULL);
+        serverAssertWithInfo(c,NULL,de != NULL);
         clients = dictGetVal(de);
         ln = listSearchKey(clients,c);
-        redisAssertWithInfo(c,NULL,ln != NULL);
+        serverAssertWithInfo(c,NULL,ln != NULL);
         listDelNode(clients,ln);
-
-        // å¦‚æžœç§»é™¤ client ä¹‹åŽé“¾è¡¨ä¸ºç©ºï¼Œé‚£ä¹ˆåˆ é™¤è¿™ä¸ª channel é”®
-        // ç¤ºæ„å›¾ï¼š
+        // Èç¹ûÒÆ³ý client Ö®ºóÁ´±íÎª¿Õ£¬ÄÇÃ´É¾³ýÕâ¸ö channel ¼ü
+        // Ê¾ÒâÍ¼£º
         // before
         // {
         //  'channel-x' : [c1]
@@ -187,285 +254,237 @@ int pubsubUnsubscribeChannel(redisClient *c, robj *channel, int notify) {
             dictDelete(server.pubsub_channels,channel);
         }
     }
-
     /* Notify the client */
-    // å›žå¤å®¢æˆ·ç«¯
-    if (notify) {
-        addReply(c,shared.mbulkhdr[3]);
-        // "ubsubscribe" å­—ç¬¦ä¸²
-        addReply(c,shared.unsubscribebulk);
-        // è¢«é€€è®¢çš„é¢‘é“
-        addReplyBulk(c,channel);
-        // é€€è®¢é¢‘é“ä¹‹åŽå®¢æˆ·ç«¯ä»åœ¨è®¢é˜…çš„é¢‘é“å’Œæ¨¡å¼çš„æ€»æ•°
-        addReplyLongLong(c,dictSize(c->pubsub_channels)+
-                       listLength(c->pubsub_patterns));
-
-    }
-
+ 	// »Ø¸´¿Í»§¶Ë
+       // "ubsubscribe" ×Ö·û´®
+        // ±»ÍË¶©µÄÆµµÀ
+  // ÍË¶©ÆµµÀÖ®ºó¿Í»§¶ËÈÔÔÚ¶©ÔÄµÄÆµµÀºÍÄ£Ê½µÄ×ÜÊý
+    if (notify) addReplyPubsubUnsubscribed(c,channel);
     decrRefCount(channel); /* it is finally safe to release it */
-
     return retval;
 }
 
+/* Subscribe a client to a pattern. Returns 1 if the operation succeeded, or 0 if the client was already subscribed to that pattern. */
 /* Subscribe a client to a pattern. Returns 1 if the operation succeeded, or 0 if the client was already subscribed to that pattern. 
  *
- * è®¾ç½®å®¢æˆ·ç«¯ c è®¢é˜…æ¨¡å¼ pattern ã€‚
+ * ÉèÖÃ¿Í»§¶Ë c ¶©ÔÄÄ£Ê½ pattern ¡£
  *
- * è®¢é˜…æˆåŠŸè¿”å›ž 1 ï¼Œå¦‚æžœå®¢æˆ·ç«¯å·²ç»è®¢é˜…äº†è¯¥æ¨¡å¼ï¼Œé‚£ä¹ˆè¿”å›ž 0 ã€‚
+ * ¶©ÔÄ³É¹¦·µ»Ø 1 £¬Èç¹û¿Í»§¶ËÒÑ¾­¶©ÔÄÁË¸ÃÄ£Ê½£¬ÄÇÃ´·µ»Ø 0 ¡£
  */
-int pubsubSubscribePattern(redisClient *c, robj *pattern) {
+int pubsubSubscribePattern(client *c, robj *pattern) {
+    dictEntry *de;
+    list *clients;
     int retval = 0;
 
-    // åœ¨é“¾è¡¨ä¸­æŸ¥æ‰¾æ¨¡å¼ï¼Œçœ‹å®¢æˆ·ç«¯æ˜¯å¦å·²ç»è®¢é˜…äº†è¿™ä¸ªæ¨¡å¼
-    // è¿™é‡Œä¸ºä»€ä¹ˆä¸åƒ channel é‚£æ ·ï¼Œç”¨å­—å…¸æ¥è¿›è¡Œæ£€æµ‹å‘¢ï¼Ÿ
-    // è™½ç„¶ pattern çš„æ•°é‡ä¸€èˆ¬æ¥è¯´å¹¶ä¸å¤š
+    // ÔÚÁ´±íÖÐ²éÕÒÄ£Ê½£¬¿´¿Í»§¶ËÊÇ·ñÒÑ¾­¶©ÔÄÁËÕâ¸öÄ£Ê½
+    // ÕâÀïÎªÊ²Ã´²»Ïñ channel ÄÇÑù£¬ÓÃ×ÖµäÀ´½øÐÐ¼ì²âÄØ£¿
+    // ËäÈ» pattern µÄÊýÁ¿Ò»°ãÀ´Ëµ²¢²»¶à
     if (listSearchKey(c->pubsub_patterns,pattern) == NULL) {
-        
-        // å¦‚æžœæ²¡æœ‰çš„è¯ï¼Œæ‰§è¡Œä»¥ä¸‹ä»£ç 
-
         retval = 1;
-
-        pubsubPattern *pat;
-
-        // å°† pattern æ·»åŠ åˆ° c->pubsub_patterns é“¾è¡¨ä¸­
+        // ½« pattern Ìí¼Óµ½ c->pubsub_patterns Á´±íÖÐ
         listAddNodeTail(c->pubsub_patterns,pattern);
-
         incrRefCount(pattern);
+        /* Add the client to the pattern -> list of clients hash table */
+        de = dictFind(server.pubsub_patterns,pattern);
+        if (de == NULL) {
+       		// ´´½¨²¢ÉèÖÃÐÂµÄ pubsubPattern ½á¹¹
+            clients = listCreate();
+            dictAdd(server.pubsub_patterns,pattern,clients);
+            incrRefCount(pattern);
+        } else {
+            clients = dictGetVal(de);
+        }
 
-        // åˆ›å»ºå¹¶è®¾ç½®æ–°çš„ pubsubPattern ç»“æž„
-        pat = zmalloc(sizeof(*pat));
-        pat->pattern = getDecodedObject(pattern);
-        pat->client = c;
-
-        // æ·»åŠ åˆ°æœ«å°¾
-        listAddNodeTail(server.pubsub_patterns,pat);
+        // Ìí¼Óµ½Ä©Î²
+        listAddNodeTail(clients,c);
     }
-
     /* Notify the client */
-    // å›žå¤å®¢æˆ·ç«¯ã€‚
-    // ç¤ºä¾‹ï¼š
+    // »Ø¸´¿Í»§¶Ë¡£
+    // Ê¾Àý£º
     // redis 127.0.0.1:6379> PSUBSCRIBE xxx*
     // Reading messages... (press Ctrl-C to quit)
     // 1) "psubscribe"
     // 2) "xxx*"
     // 3) (integer) 1
-    addReply(c,shared.mbulkhdr[3]);
-    // å›žå¤ "psubscribe" å­—ç¬¦ä¸²
-    addReply(c,shared.psubscribebulk);
-    // å›žå¤è¢«è®¢é˜…çš„æ¨¡å¼
-    addReplyBulk(c,pattern);
-    // å›žå¤å®¢æˆ·ç«¯è®¢é˜…çš„é¢‘é“å’Œæ¨¡å¼çš„æ€»æ•°
-    addReplyLongLong(c,dictSize(c->pubsub_channels)+listLength(c->pubsub_patterns));
-
+    // »Ø¸´ "psubscribe" ×Ö·û´®
+    // »Ø¸´±»¶©ÔÄµÄÄ£Ê½
+    // »Ø¸´¿Í»§¶Ë¶©ÔÄµÄÆµµÀºÍÄ£Ê½µÄ×ÜÊý
+    addReplyPubsubPatSubscribed(c,pattern);
     return retval;
 }
 
 /* Unsubscribe a client from a channel. Returns 1 if the operation succeeded, or
  * 0 if the client was not subscribed to the specified channel. 
  *
- * å–æ¶ˆå®¢æˆ·ç«¯ c å¯¹æ¨¡å¼ pattern çš„è®¢é˜…ã€‚
+ * È¡Ïû¿Í»§¶Ë c ¶ÔÄ£Ê½ pattern µÄ¶©ÔÄ¡£
  *
- * å–æ¶ˆæˆåŠŸè¿”å›ž 1 ï¼Œå› ä¸ºå®¢æˆ·ç«¯æœªè®¢é˜… pattern è€Œé€ æˆå–æ¶ˆå¤±è´¥ï¼Œè¿”å›ž 0 ã€‚
+ * È¡Ïû³É¹¦·µ»Ø 1 £¬ÒòÎª¿Í»§¶ËÎ´¶©ÔÄ pattern ¶øÔì³ÉÈ¡ÏûÊ§°Ü£¬·µ»Ø 0 ¡£
  */
-int pubsubUnsubscribePattern(redisClient *c, robj *pattern, int notify) {
+int pubsubUnsubscribePattern(client *c, robj *pattern, int notify) {
+    dictEntry *de;
+    list *clients;
     listNode *ln;
-    pubsubPattern pat;
     int retval = 0;
 
     incrRefCount(pattern); /* Protect the object. May be the same we remove */
-
-    // å…ˆç¡®è®¤ä¸€ä¸‹ï¼Œå®¢æˆ·ç«¯æ˜¯å¦è®¢é˜…äº†è¿™ä¸ªæ¨¡å¼
+    // ÏÈÈ·ÈÏÒ»ÏÂ£¬¿Í»§¶ËÊÇ·ñ¶©ÔÄÁËÕâ¸öÄ£Ê½
     if ((ln = listSearchKey(c->pubsub_patterns,pattern)) != NULL) {
-
         retval = 1;
-
-        // å°†æ¨¡å¼ä»Žå®¢æˆ·ç«¯çš„è®¢é˜…åˆ—è¡¨ä¸­åˆ é™¤
+        // ½«Ä£Ê½´Ó¿Í»§¶ËµÄ¶©ÔÄÁÐ±íÖÐÉ¾³ý
         listDelNode(c->pubsub_patterns,ln);
-
-        // è®¾ç½® pubsubPattern ç»“æž„
-        pat.client = c;
-        pat.pattern = pattern;
-
-        // åœ¨æœåŠ¡å™¨ä¸­æŸ¥æ‰¾
-        ln = listSearchKey(server.pubsub_patterns,&pat);
-        listDelNode(server.pubsub_patterns,ln);
+        /* Remove the client from the pattern -> clients list hash table */
+        // ÔÚ·þÎñÆ÷ÖÐ²éÕÒ
+        de = dictFind(server.pubsub_patterns,pattern);
+        serverAssertWithInfo(c,NULL,de != NULL);
+        clients = dictGetVal(de);
+        ln = listSearchKey(clients,c);
+        serverAssertWithInfo(c,NULL,ln != NULL);
+        listDelNode(clients,ln);
+        if (listLength(clients) == 0) {
+            /* Free the list and associated hash entry at all if this was
+             * the latest client. */
+            dictDelete(server.pubsub_patterns,pattern);
+        }
     }
-
     /* Notify the client */
-    // å›žå¤å®¢æˆ·ç«¯
-    if (notify) {
-        addReply(c,shared.mbulkhdr[3]);
-        // "punsubscribe" å­—ç¬¦ä¸²
-        addReply(c,shared.punsubscribebulk);
-        // è¢«é€€è®¢çš„æ¨¡å¼
-        addReplyBulk(c,pattern);
-        // é€€è®¢é¢‘é“ä¹‹åŽå®¢æˆ·ç«¯ä»åœ¨è®¢é˜…çš„é¢‘é“å’Œæ¨¡å¼çš„æ€»æ•°
-        addReplyLongLong(c,dictSize(c->pubsub_channels)+
-                       listLength(c->pubsub_patterns));
-    }
-
+    // »Ø¸´¿Í»§¶Ë
+        // "punsubscribe" ×Ö·û´®
+        // ±»ÍË¶©µÄÄ£Ê½
+        // ÍË¶©ÆµµÀÖ®ºó¿Í»§¶ËÈÔÔÚ¶©ÔÄµÄÆµµÀºÍÄ£Ê½µÄ×ÜÊý
+    if (notify) addReplyPubsubPatUnsubscribed(c,pattern);
     decrRefCount(pattern);
-
     return retval;
 }
 
 /* Unsubscribe from all the channels. Return the number of channels the
- * client was subscribed from. 
+ * client was subscribed to. 
  *
- * é€€è®¢å®¢æˆ·ç«¯ c è®¢é˜…çš„æ‰€æœ‰é¢‘é“ã€‚
+ * ÍË¶©¿Í»§¶Ë c ¶©ÔÄµÄËùÓÐÆµµÀ¡£
  *
- * è¿”å›žè¢«é€€è®¢é¢‘é“çš„æ€»æ•°ã€‚
- */
-int pubsubUnsubscribeAllChannels(redisClient *c, int notify) {
-
-    // é¢‘é“è¿­ä»£å™¨
-    dictIterator *di = dictGetSafeIterator(c->pubsub_channels);
-    dictEntry *de;
+ * ·µ»Ø±»ÍË¶©ÆµµÀµÄ×ÜÊý¡£
+ *
+int pubsubUnsubscribeAllChannels(client *c, int notify) {
     int count = 0;
+    if (dictSize(c->pubsub_channels) > 0) {
+    // ÆµµÀµü´úÆ÷
+        dictIterator *di = dictGetSafeIterator(c->pubsub_channels);
+        dictEntry *de;
+   	 // ÍË¶©
+        while((de = dictNext(di)) != NULL) {
+            robj *channel = dictGetKey(de);
 
-    // é€€è®¢
-    while((de = dictNext(di)) != NULL) {
-        robj *channel = dictGetKey(de);
-
-        count += pubsubUnsubscribeChannel(c,channel,notify);
+            count += pubsubUnsubscribeChannel(c,channel,notify);
+        }
+        dictReleaseIterator(di);
     }
-
     /* We were subscribed to nothing? Still reply to the client. */
-    // å¦‚æžœåœ¨æ‰§è¡Œè¿™ä¸ªå‡½æ•°æ—¶ï¼Œå®¢æˆ·ç«¯æ²¡æœ‰è®¢é˜…ä»»ä½•é¢‘é“ï¼Œ
-    // é‚£ä¹ˆå‘å®¢æˆ·ç«¯å‘é€å›žå¤
-    if (notify && count == 0) {
-        addReply(c,shared.mbulkhdr[3]);
-        addReply(c,shared.unsubscribebulk);
-        addReply(c,shared.nullbulk);
-        addReplyLongLong(c,dictSize(c->pubsub_channels)+
-                       listLength(c->pubsub_patterns));
-    }
-
-    dictReleaseIterator(di);
-
-    // è¢«é€€è®¢çš„é¢‘é“çš„æ•°é‡
+    if (notify && count == 0) addReplyPubsubUnsubscribed(c,NULL);
+    // ±»ÍË¶©µÄÆµµÀµÄÊýÁ¿
     return count;
 }
 
 /* Unsubscribe from all the patterns. Return the number of patterns the
  * client was subscribed from. 
  *
- * é€€è®¢å®¢æˆ·ç«¯ c è®¢é˜…çš„æ‰€æœ‰æ¨¡å¼ã€‚
+ * ÍË¶©¿Í»§¶Ë c ¶©ÔÄµÄËùÓÐÄ£Ê½¡£
  *
- * è¿”å›žè¢«é€€è®¢æ¨¡å¼çš„æ•°é‡ã€‚
+ * ·µ»Ø±»ÍË¶©Ä£Ê½µÄÊýÁ¿¡£
  */
-int pubsubUnsubscribeAllPatterns(redisClient *c, int notify) {
+int pubsubUnsubscribeAllPatterns(client *c, int notify) {
     listNode *ln;
     listIter li;
     int count = 0;
 
-    // è¿­ä»£å®¢æˆ·ç«¯è®¢é˜…æ¨¡å¼çš„é“¾è¡¨
+    // µü´ú¿Í»§¶Ë¶©ÔÄÄ£Ê½µÄÁ´±í
     listRewind(c->pubsub_patterns,&li);
     while ((ln = listNext(&li)) != NULL) {
         robj *pattern = ln->value;
 
-        // é€€è®¢ï¼Œå¹¶è®¡ç®—é€€è®¢æ•°
+        // ÍË¶©£¬²¢¼ÆËãÍË¶©Êý
         count += pubsubUnsubscribePattern(c,pattern,notify);
     }
 
-    // å¦‚æžœåœ¨æ‰§è¡Œè¿™ä¸ªå‡½æ•°æ—¶ï¼Œå®¢æˆ·ç«¯æ²¡æœ‰è®¢é˜…ä»»ä½•æ¨¡å¼ï¼Œ
-    // é‚£ä¹ˆå‘å®¢æˆ·ç«¯å‘é€å›žå¤
-    if (notify && count == 0) {
-        /* We were subscribed to nothing? Still reply to the client. */
-        addReply(c,shared.mbulkhdr[3]);
-        addReply(c,shared.punsubscribebulk);
-        addReply(c,shared.nullbulk);
-        addReplyLongLong(c,dictSize(c->pubsub_channels)+
-                       listLength(c->pubsub_patterns));
-    }
-
-    // é€€è®¢æ€»æ•°
+    // Èç¹ûÔÚÖ´ÐÐÕâ¸öº¯ÊýÊ±£¬¿Í»§¶ËÃ»ÓÐ¶©ÔÄÈÎºÎÄ£Ê½£¬
+    // ÄÇÃ´Ïò¿Í»§¶Ë·¢ËÍ»Ø¸´
+    if (notify && count == 0) addReplyPubsubPatUnsubscribed(c,NULL);
+    // ÍË¶©×ÜÊý
     return count;
 }
 
 /* Publish a message 
  *
- * å°† message å‘é€åˆ°æ‰€æœ‰è®¢é˜…é¢‘é“ channel çš„å®¢æˆ·ç«¯ï¼Œ
- * ä»¥åŠæ‰€æœ‰è®¢é˜…äº†å’Œ channel é¢‘é“åŒ¹é…çš„æ¨¡å¼çš„å®¢æˆ·ç«¯ã€‚
+ * ½« message ·¢ËÍµ½ËùÓÐ¶©ÔÄÆµµÀ channel µÄ¿Í»§¶Ë£¬
+ * ÒÔ¼°ËùÓÐ¶©ÔÄÁËºÍ channel ÆµµÀÆ¥ÅäµÄÄ£Ê½µÄ¿Í»§¶Ë¡£
  */
 int pubsubPublishMessage(robj *channel, robj *message) {
     int receivers = 0;
     dictEntry *de;
+    dictIterator *di;
     listNode *ln;
     listIter li;
 
     /* Send to clients listening for that channel */
-    // å–å‡ºåŒ…å«æ‰€æœ‰è®¢é˜…é¢‘é“ channel çš„å®¢æˆ·ç«¯çš„é“¾è¡¨
-    // å¹¶å°†æ¶ˆæ¯å‘é€ç»™å®ƒä»¬
+    // È¡³ö°üº¬ËùÓÐ¶©ÔÄÆµµÀ channel µÄ¿Í»§¶ËµÄÁ´±í
+    // ²¢½«ÏûÏ¢·¢ËÍ¸øËüÃÇ
     de = dictFind(server.pubsub_channels,channel);
     if (de) {
         list *list = dictGetVal(de);
         listNode *ln;
         listIter li;
 
-        // éåŽ†å®¢æˆ·ç«¯é“¾è¡¨ï¼Œå°† message å‘é€ç»™å®ƒä»¬
+        // ±éÀú¿Í»§¶ËÁ´±í£¬½« message ·¢ËÍ¸øËüÃÇ
         listRewind(list,&li);
         while ((ln = listNext(&li)) != NULL) {
-            redisClient *c = ln->value;
-
-            // å›žå¤å®¢æˆ·ç«¯ã€‚
-            // ç¤ºä¾‹ï¼š
+            client *c = ln->value;
+            addReplyPubsubMessage(c,channel,message);
+            // »Ø¸´¿Í»§¶Ë¡£
+            // Ê¾Àý£º
             // 1) "message"
             // 2) "xxx"
             // 3) "hello"
-            addReply(c,shared.mbulkhdr[3]);
-            // "message" å­—ç¬¦ä¸²
-            addReply(c,shared.messagebulk);
-            // æ¶ˆæ¯çš„æ¥æºé¢‘é“
-            addReplyBulk(c,channel);
-            // æ¶ˆæ¯å†…å®¹
-            addReplyBulk(c,message);
-
-            // æŽ¥æ”¶å®¢æˆ·ç«¯è®¡æ•°
+            // "message" ×Ö·û´®
+            // ÏûÏ¢µÄÀ´Ô´ÆµµÀ
+            // ÏûÏ¢ÄÚÈÝ
+            // ½ÓÊÕ¿Í»§¶Ë¼ÆÊý
             receivers++;
         }
     }
-
     /* Send to clients listening to matching channels */
-    // å°†æ¶ˆæ¯ä¹Ÿå‘é€ç»™é‚£äº›å’Œé¢‘é“åŒ¹é…çš„æ¨¡å¼
-    if (listLength(server.pubsub_patterns)) {
+    // ½«ÏûÏ¢Ò²·¢ËÍ¸øÄÇÐ©ºÍÆµµÀÆ¥ÅäµÄÄ£Ê½
+    di = dictGetIterator(server.pubsub_patterns);
+    if (di) {
+        // ±éÀúÄ£Ê½Á´±í        channel = getDecodedObject(channel);
+        while((de = dictNext(di)) != NULL) {
+            // È¡³ö robj
+            robj *pattern = dictGetKey(de);
+            list *clients = dictGetVal(de);
 
-        // éåŽ†æ¨¡å¼é“¾è¡¨
-        listRewind(server.pubsub_patterns,&li);
-        channel = getDecodedObject(channel);
-        while ((ln = listNext(&li)) != NULL) {
 
-            // å–å‡º pubsubPattern
-            pubsubPattern *pat = ln->value;
-
-            // å¦‚æžœ channel å’Œ pattern åŒ¹é…
-            // å°±ç»™æ‰€æœ‰è®¢é˜…è¯¥ pattern çš„å®¢æˆ·ç«¯å‘é€æ¶ˆæ¯
-            if (stringmatchlen((char*)pat->pattern->ptr,
-                                sdslen(pat->pattern->ptr),
+            if (!stringmatchlen((char*)pattern->ptr,
+                                sdslen(pattern->ptr),
                                 (char*)channel->ptr,
-                                sdslen(channel->ptr),0)) {
+                                sdslen(channel->ptr),0)) continue;
 
-                // å›žå¤å®¢æˆ·ç«¯
-                // ç¤ºä¾‹ï¼š
+            // Èç¹û channel ºÍ pattern Æ¥Åä
+            // ¾Í¸øËùÓÐ¶©ÔÄ¸Ã pattern µÄ¿Í»§¶Ë·¢ËÍÏûÏ¢
+            listRewind(clients,&li);
+            while ((ln = listNext(&li)) != NULL) {
+                client *c = listNodeValue(ln);
+
+                // »Ø¸´¿Í»§¶Ë
+                // Ê¾Àý£º
                 // 1) "pmessage"
                 // 2) "*"
                 // 3) "xxx"
                 // 4) "hello"
-                addReply(pat->client,shared.mbulkhdr[4]);
-                addReply(pat->client,shared.pmessagebulk);
-                addReplyBulk(pat->client,pat->pattern);
-                addReplyBulk(pat->client,channel);
-                addReplyBulk(pat->client,message);
-
-                // å¯¹æŽ¥æ”¶æ¶ˆæ¯çš„å®¢æˆ·ç«¯è¿›è¡Œè®¡æ•°
+                addReplyPubsubPatMessage(c,pattern,channel,message);
+                // ¶Ô½ÓÊÕÏûÏ¢µÄ¿Í»§¶Ë½øÐÐ¼ÆÊý
                 receivers++;
             }
         }
-
         decrRefCount(channel);
+        dictReleaseIterator(di);
     }
-
-    // è¿”å›žè®¡æ•°
     return receivers;
 }
 
@@ -473,14 +492,28 @@ int pubsubPublishMessage(robj *channel, robj *message) {
  * Pubsub commands implementation
  *----------------------------------------------------------------------------*/
 
-void subscribeCommand(redisClient *c) {
+/* SUBSCRIBE channel [channel ...] */
+void subscribeCommand(client *c) {
     int j;
+    if ((c->flags & CLIENT_DENY_BLOCKING) && !(c->flags & CLIENT_MULTI)) {
+        /**
+         * A client that has CLIENT_DENY_BLOCKING flag on
+         * expect a reply per command and so can not execute subscribe.
+         *
+         * Notice that we have a special treatment for multi because of
+         * backword compatibility
+         */
+        addReplyError(c, "SUBSCRIBE isn't allowed for a DENY BLOCKING client");
+        return;
+    }
 
     for (j = 1; j < c->argc; j++)
         pubsubSubscribeChannel(c,c->argv[j]);
+    c->flags |= CLIENT_PUBSUB;
 }
 
-void unsubscribeCommand(redisClient *c) {
+/* UNSUBSCRIBE [channel [channel ...]] */
+void unsubscribeCommand(client *c) {
     if (c->argc == 1) {
         pubsubUnsubscribeAllChannels(c,1);
     } else {
@@ -489,16 +522,31 @@ void unsubscribeCommand(redisClient *c) {
         for (j = 1; j < c->argc; j++)
             pubsubUnsubscribeChannel(c,c->argv[j],1);
     }
+    if (clientSubscriptionsCount(c) == 0) c->flags &= ~CLIENT_PUBSUB;
 }
 
-void psubscribeCommand(redisClient *c) {
+/* PSUBSCRIBE pattern [pattern ...] */
+void psubscribeCommand(client *c) {
     int j;
+    if ((c->flags & CLIENT_DENY_BLOCKING) && !(c->flags & CLIENT_MULTI)) {
+        /**
+         * A client that has CLIENT_DENY_BLOCKING flag on
+         * expect a reply per command and so can not execute subscribe.
+         *
+         * Notice that we have a special treatment for multi because of
+         * backword compatibility
+         */
+        addReplyError(c, "PSUBSCRIBE isn't allowed for a DENY BLOCKING client");
+        return;
+    }
 
     for (j = 1; j < c->argc; j++)
         pubsubSubscribePattern(c,c->argv[j]);
+    c->flags |= CLIENT_PUBSUB;
 }
 
-void punsubscribeCommand(redisClient *c) {
+/* PUNSUBSCRIBE [pattern [pattern ...]] */
+void punsubscribeCommand(client *c) {
     if (c->argc == 1) {
         pubsubUnsubscribeAllPatterns(c,1);
     } else {
@@ -507,98 +555,98 @@ void punsubscribeCommand(redisClient *c) {
         for (j = 1; j < c->argc; j++)
             pubsubUnsubscribePattern(c,c->argv[j],1);
     }
+    if (clientSubscriptionsCount(c) == 0) c->flags &= ~CLIENT_PUBSUB;
 }
 
-void publishCommand(redisClient *c) {
-
+/* PUBLISH <channel> <message> */
+void publishCommand(client *c) {
     int receivers = pubsubPublishMessage(c->argv[1],c->argv[2]);
     if (server.cluster_enabled)
         clusterPropagatePublish(c->argv[1],c->argv[2]);
     else
-        forceCommandPropagation(c,REDIS_PROPAGATE_REPL);
+        forceCommandPropagation(c,PROPAGATE_REPL);
     addReplyLongLong(c,receivers);
 }
 
 /* PUBSUB command for Pub/Sub introspection. */
-void pubsubCommand(redisClient *c) {
-
-    // PUBSUB CHANNELS [pattern] å­å‘½ä»¤
-    if (!strcasecmp(c->argv[1]->ptr,"channels") &&
-        (c->argc == 2 || c->argc ==3))
+void pubsubCommand(client *c) {
+    if (c->argc == 2 && !strcasecmp(c->argv[1]->ptr,"help")) {
+        const char *help[] = {
+"CHANNELS [<pattern>]",
+"    Return the currently active channels matching a <pattern> (default: '*').",
+"NUMPAT",
+"    Return number of subscriptions to patterns.",
+"NUMSUB [<channel> ...]",
+"    Return the number of subscribers for the specified channels, excluding",
+"    pattern subscriptions(default: no channels).",
+NULL
+        };
+        addReplyHelp(c, help);
+    } else if (!strcasecmp(c->argv[1]->ptr,"channels") &&
+        (c->argc == 2 || c->argc == 3))
     {
         /* PUBSUB CHANNELS [<pattern>] */
-        // æ£€æŸ¥å‘½ä»¤è¯·æ±‚æ˜¯å¦ç»™å®šäº† pattern å‚æ•°
-        // å¦‚æžœæ²¡æœ‰ç»™å®šçš„è¯ï¼Œå°±è®¾ä¸º NULL
+        // ¼ì²éÃüÁîÇëÇóÊÇ·ñ¸ø¶¨ÁË pattern ²ÎÊý
+        // Èç¹ûÃ»ÓÐ¸ø¶¨µÄ»°£¬¾ÍÉèÎª NULL
         sds pat = (c->argc == 2) ? NULL : c->argv[2]->ptr;
-
-        // åˆ›å»º pubsub_channels çš„å­—å…¸è¿­ä»£å™¨
-        // è¯¥å­—å…¸çš„é”®ä¸ºé¢‘é“ï¼Œå€¼ä¸ºé“¾è¡¨
-        // é“¾è¡¨ä¸­ä¿å­˜äº†æ‰€æœ‰è®¢é˜…é”®æ‰€å¯¹åº”çš„é¢‘é“çš„å®¢æˆ·ç«¯
+        // ´´½¨ pubsub_channels µÄ×Öµäµü´úÆ÷
+        // ¸Ã×ÖµäµÄ¼üÎªÆµµÀ£¬ÖµÎªÁ´±í
+        // Á´±íÖÐ±£´æÁËËùÓÐ¶©ÔÄ¼üËù¶ÔÓ¦µÄÆµµÀµÄ¿Í»§¶Ë
         dictIterator *di = dictGetIterator(server.pubsub_channels);
         dictEntry *de;
         long mblen = 0;
         void *replylen;
 
-        replylen = addDeferredMultiBulkLength(c);
-        // ä»Žè¿­ä»£å™¨ä¸­èŽ·å–ä¸€ä¸ªå®¢æˆ·ç«¯
+        replylen = addReplyDeferredLen(c);
+        // ´Óµü´úÆ÷ÖÐ»ñÈ¡Ò»¸ö¿Í»§¶Ë
         while((de = dictNext(di)) != NULL) {
-
-            // ä»Žå­—å…¸ä¸­å–å‡ºå®¢æˆ·ç«¯æ‰€è®¢é˜…çš„é¢‘é“
+            // ´Ó×ÖµäÖÐÈ¡³ö¿Í»§¶ËËù¶©ÔÄµÄÆµµÀ
             robj *cobj = dictGetKey(de);
             sds channel = cobj->ptr;
 
-            // é¡ºå¸¦ä¸€æ
-            // å› ä¸º Redis çš„å­—å…¸å®žçŽ°åªèƒ½éåŽ†å­—å…¸çš„å€¼ï¼ˆå®¢æˆ·ç«¯ï¼‰
-            // æ‰€ä»¥è¿™é‡Œæ‰ä¼šæœ‰éåŽ†å­—å…¸å€¼ç„¶åŽé€šè¿‡å­—å…¸å€¼å–å‡ºå­—å…¸é”®ï¼ˆé¢‘é“ï¼‰çš„è¹©è„šç”¨æ³•
+            // Ë³´øÒ»Ìá
+            // ÒòÎª Redis µÄ×ÖµäÊµÏÖÖ»ÄÜ±éÀú×ÖµäµÄÖµ£¨¿Í»§¶Ë£©
+            // ËùÒÔÕâÀï²Å»áÓÐ±éÀú×ÖµäÖµÈ»ºóÍ¨¹ý×ÖµäÖµÈ¡³ö×Öµä¼ü£¨ÆµµÀ£©µÄõ¿½ÅÓÃ·¨
 
-            // å¦‚æžœæ²¡æœ‰ç»™å®š pattern å‚æ•°ï¼Œé‚£ä¹ˆæ‰“å°æ‰€æœ‰æ‰¾åˆ°çš„é¢‘é“
-            // å¦‚æžœç»™å®šäº† pattern å‚æ•°ï¼Œé‚£ä¹ˆåªæ‰“å°å’Œ pattern ç›¸åŒ¹é…çš„é¢‘é“
+            // Èç¹ûÃ»ÓÐ¸ø¶¨ pattern ²ÎÊý£¬ÄÇÃ´´òÓ¡ËùÓÐÕÒµ½µÄÆµµÀ
+            // Èç¹û¸ø¶¨ÁË pattern ²ÎÊý£¬ÄÇÃ´Ö»´òÓ¡ºÍ pattern ÏàÆ¥ÅäµÄÆµµÀ
             if (!pat || stringmatchlen(pat, sdslen(pat),
                                        channel, sdslen(channel),0))
             {
-                // å‘å®¢æˆ·ç«¯è¾“å‡ºé¢‘é“
+                // Ïò¿Í»§¶ËÊä³öÆµµÀ
                 addReplyBulk(c,cobj);
                 mblen++;
             }
         }
-        // é‡Šæ”¾å­—å…¸è¿­ä»£å™¨
+        // ÊÍ·Å×Öµäµü´úÆ÷
         dictReleaseIterator(di);
-        setDeferredMultiBulkLength(c,replylen,mblen);
-
-    // PUBSUB NUMSUB [channel-1 channel-2 ... channel-N] å­å‘½ä»¤
+        setDeferredArrayLen(c,replylen,mblen);
     } else if (!strcasecmp(c->argv[1]->ptr,"numsub") && c->argc >= 2) {
         /* PUBSUB NUMSUB [Channel_1 ... Channel_N] */
         int j;
 
-        addReplyMultiBulkLen(c,(c->argc-2)*2);
+        addReplyArrayLen(c,(c->argc-2)*2);
         for (j = 2; j < c->argc; j++) {
-
-            // c->argv[j] ä¹Ÿå³æ˜¯å®¢æˆ·ç«¯è¾“å…¥çš„ç¬¬ N ä¸ªé¢‘é“åå­—
-            // pubsub_channels çš„å­—å…¸ä¸ºé¢‘é“åå­—
-            // è€Œå€¼åˆ™æ˜¯ä¿å­˜äº† c->argv[j] é¢‘é“æ‰€æœ‰è®¢é˜…è€…çš„é“¾è¡¨
-            // è€Œè°ƒç”¨ dictFetchValue ä¹Ÿå°±æ˜¯å–å‡ºæ‰€æœ‰è®¢é˜…ç»™å®šé¢‘é“çš„å®¢æˆ·ç«¯
+            // c->argv[j] Ò²¼´ÊÇ¿Í»§¶ËÊäÈëµÄµÚ N ¸öÆµµÀÃû×Ö
+            // pubsub_channels µÄ×ÖµäÎªÆµµÀÃû×Ö
+            // ¶øÖµÔòÊÇ±£´æÁË c->argv[j] ÆµµÀËùÓÐ¶©ÔÄÕßµÄÁ´±í
+            // ¶øµ÷ÓÃ dictFetchValue Ò²¾ÍÊÇÈ¡³öËùÓÐ¶©ÔÄ¸ø¶¨ÆµµÀµÄ¿Í»§¶Ë
             list *l = dictFetchValue(server.pubsub_channels,c->argv[j]);
 
             addReplyBulk(c,c->argv[j]);
-            // å‘å®¢æˆ·ç«¯è¿”å›žé“¾è¡¨çš„é•¿åº¦å±žæ€§
-            // è¿™ä¸ªå±žæ€§å°±æ˜¯æŸä¸ªé¢‘é“çš„è®¢é˜…è€…æ•°é‡
-            // ä¾‹å¦‚ï¼šå¦‚æžœä¸€ä¸ªé¢‘é“æœ‰ä¸‰ä¸ªè®¢é˜…è€…ï¼Œé‚£ä¹ˆé“¾è¡¨çš„é•¿åº¦å°±æ˜¯ 3
-            // è€Œè¿”å›žç»™å®¢æˆ·ç«¯çš„æ•°å­—ä¹Ÿæ˜¯ä¸‰
-            addReplyBulkLongLong(c,l ? listLength(l) : 0);
+            // Ïò¿Í»§¶Ë·µ»ØÁ´±íµÄ³¤¶ÈÊôÐÔ
+            // Õâ¸öÊôÐÔ¾ÍÊÇÄ³¸öÆµµÀµÄ¶©ÔÄÕßÊýÁ¿
+            // ÀýÈç£ºÈç¹ûÒ»¸öÆµµÀÓÐÈý¸ö¶©ÔÄÕß£¬ÄÇÃ´Á´±íµÄ³¤¶È¾ÍÊÇ 3
+            // ¶ø·µ»Ø¸ø¿Í»§¶ËµÄÊý×ÖÒ²ÊÇÈý
+            addReplyLongLong(c,l ? listLength(l) : 0);
         }
-
-    // PUBSUB NUMPAT å­å‘½ä»¤
     } else if (!strcasecmp(c->argv[1]->ptr,"numpat") && c->argc == 2) {
         /* PUBSUB NUMPAT */
-
-        // pubsub_patterns é“¾è¡¨ä¿å­˜äº†æœåŠ¡å™¨ä¸­æ‰€æœ‰è¢«è®¢é˜…çš„æ¨¡å¼
-        // pubsub_patterns çš„é•¿åº¦å°±æ˜¯æœåŠ¡å™¨ä¸­è¢«è®¢é˜…æ¨¡å¼çš„æ•°é‡
-        addReplyLongLong(c,listLength(server.pubsub_patterns));
-
-    // é”™è¯¯å¤„ç†
+        // pubsub_patterns Á´±í±£´æÁË·þÎñÆ÷ÖÐËùÓÐ±»¶©ÔÄµÄÄ£Ê½
+        // pubsub_patterns µÄ³¤¶È¾ÍÊÇ·þÎñÆ÷ÖÐ±»¶©ÔÄÄ£Ê½µÄÊýÁ¿
+        addReplyLongLong(c,dictSize(server.pubsub_patterns));
+    // ´íÎó´¦Àí
     } else {
-        addReplyErrorFormat(c,
-            "Unknown PUBSUB subcommand or wrong number of arguments for '%s'",
-            (char*)c->argv[1]->ptr);
+        addReplySubcommandSyntaxError(c);
     }
 }

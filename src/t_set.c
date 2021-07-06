@@ -27,445 +27,440 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "redis.h"
+#include "server.h"
 
 /*-----------------------------------------------------------------------------
  * Set Commands
  *----------------------------------------------------------------------------*/
 
-void sunionDiffGenericCommand(redisClient *c, robj **setkeys, int setnum, robj *dstkey, int op);
+void sunionDiffGenericCommand(client *c, robj **setkeys, int setnum,
+                              robj *dstkey, int op);
 
 /* Factory method to return a set that *can* hold "value". 
  *
- * è¿”å›ä¸€ä¸ªå¯ä»¥ä¿å­˜å€¼ value çš„é›†åˆã€‚
+ * ·µ»ØÒ»¸ö¿ÉÒÔ±£´æÖµ value µÄ¼¯ºÏ¡£
  *
  * When the object has an integer-encodable value, 
  * an intset will be returned. Otherwise a regular hash table. 
  *
- * å½“å¯¹è±¡çš„å€¼å¯ä»¥è¢«ç¼–ç ä¸ºæ•´æ•°æ—¶ï¼Œè¿”å› intset ï¼Œ
- * å¦åˆ™ï¼Œè¿”å›æ™®é€šçš„å“ˆå¸Œè¡¨ã€‚
+ * µ±¶ÔÏóµÄÖµ¿ÉÒÔ±»±àÂëÎªÕûÊıÊ±£¬·µ»Ø intset £¬
+ * ·ñÔò£¬·µ»ØÆÕÍ¨µÄ¹şÏ£±í¡£
  */
-robj *setTypeCreate(robj *value) {
-
-    if (isObjectRepresentableAsLongLong(value,NULL) == REDIS_OK)
+robj *setTypeCreate(sds value) {
+    if (isSdsRepresentableAsLongLong(value,NULL) == C_OK)
         return createIntsetObject();
-
     return createSetObject();
 }
 
-/*
- * å¤šæ€ add æ“ä½œ
+/* Add the specified value into a set.
+ * ¶àÌ¬ add ²Ù×÷
  *
- * æ·»åŠ æˆåŠŸè¿”å› 1 ï¼Œå¦‚æœå…ƒç´ å·²ç»å­˜åœ¨ï¼Œè¿”å› 0 ã€‚
- */
-int setTypeAdd(robj *subject, robj *value) {
+ * Ìí¼Ó³É¹¦·µ»Ø 1 £¬Èç¹ûÔªËØÒÑ¾­´æÔÚ£¬·µ»Ø 0 ¡£
+ * If the value was already member of the set, nothing is done and 0 is
+ * returned, otherwise the new element is added and 1 is returned. */
+int setTypeAdd(robj *subject, sds value) {
     long long llval;
 
-    // å­—å…¸
-    if (subject->encoding == REDIS_ENCODING_HT) {
-        // å°† value ä½œä¸ºé”®ï¼Œ NULL ä½œä¸ºå€¼ï¼Œå°†å…ƒç´ æ·»åŠ åˆ°å­—å…¸ä¸­
-        if (dictAdd(subject->ptr,value,NULL) == DICT_OK) {
-            incrRefCount(value);
+    // ×Öµä
+    if (subject->encoding == OBJ_ENCODING_HT) {
+        // ½« value ×÷Îª¼ü£¬ NULL ×÷ÎªÖµ£¬½«ÔªËØÌí¼Óµ½×ÖµäÖĞ
+        dict *ht = subject->ptr;
+        dictEntry *de = dictAddRaw(ht,value,NULL);
+        if (de) {
+            dictSetKey(ht,de,sdsdup(value));
+            dictSetVal(ht,de,NULL);
             return 1;
         }
 
+
     // intset
-    } else if (subject->encoding == REDIS_ENCODING_INTSET) {
-        
-        // å¦‚æœå¯¹è±¡çš„å€¼å¯ä»¥ç¼–ç ä¸ºæ•´æ•°çš„è¯ï¼Œé‚£ä¹ˆå°†å¯¹è±¡çš„å€¼æ·»åŠ åˆ° intset ä¸­
-        if (isObjectRepresentableAsLongLong(value,&llval) == REDIS_OK) {
+    } else if (subject->encoding == OBJ_ENCODING_INTSET) {
+
+
+        // Èç¹û¶ÔÏóµÄÖµ¿ÉÒÔ±àÂëÎªÕûÊıµÄ»°£¬ÄÇÃ´½«¶ÔÏóµÄÖµÌí¼Óµ½ intset ÖĞ
+        if (isSdsRepresentableAsLongLong(value,&llval) == C_OK) {
             uint8_t success = 0;
             subject->ptr = intsetAdd(subject->ptr,llval,&success);
             if (success) {
                 /* Convert to regular set when the intset contains
                  * too many entries. */
-                // æ·»åŠ æˆåŠŸ
-                // æ£€æŸ¥é›†åˆåœ¨æ·»åŠ æ–°å…ƒç´ ä¹‹åæ˜¯å¦éœ€è¦è½¬æ¢ä¸ºå­—å…¸
+                // Ìí¼Ó³É¹¦
+                // ¼ì²é¼¯ºÏÔÚÌí¼ÓĞÂÔªËØÖ®ºóÊÇ·ñĞèÒª×ª»»Îª×Öµä
                 if (intsetLen(subject->ptr) > server.set_max_intset_entries)
-                    setTypeConvert(subject,REDIS_ENCODING_HT);
+                    setTypeConvert(subject,OBJ_ENCODING_HT);
                 return 1;
             }
-
-        // å¦‚æœå¯¹è±¡çš„å€¼ä¸èƒ½ç¼–ç ä¸ºæ•´æ•°ï¼Œé‚£ä¹ˆå°†é›†åˆä» intset ç¼–ç è½¬æ¢ä¸º HT ç¼–ç 
-        // ç„¶åå†æ‰§è¡Œæ·»åŠ æ“ä½œ
+        // Èç¹û¶ÔÏóµÄÖµ²»ÄÜ±àÂëÎªÕûÊı£¬ÄÇÃ´½«¼¯ºÏ´Ó intset ±àÂë×ª»»Îª HT ±àÂë
+        // È»ºóÔÙÖ´ĞĞÌí¼Ó²Ù×÷
         } else {
             /* Failed to get integer from object, convert to regular set. */
-            setTypeConvert(subject,REDIS_ENCODING_HT);
+            setTypeConvert(subject,OBJ_ENCODING_HT);
 
             /* The set *was* an intset and this value is not integer
              * encodable, so dictAdd should always work. */
-            redisAssertWithInfo(NULL,value,dictAdd(subject->ptr,value,NULL) == DICT_OK);
-            incrRefCount(value);
+            serverAssert(dictAdd(subject->ptr,sdsdup(value),NULL) == DICT_OK);
             return 1;
         }
-
-    // æœªçŸ¥ç¼–ç 
     } else {
-        redisPanic("Unknown set encoding");
+        serverPanic("Unknown set encoding");
     }
-
-    // æ·»åŠ å¤±è´¥ï¼Œå…ƒç´ å·²ç»å­˜åœ¨
+    // Ìí¼ÓÊ§°Ü£¬ÔªËØÒÑ¾­´æÔÚ
     return 0;
 }
 
-/*
- * å¤šæ€ remove æ“ä½œ
- *
- * åˆ é™¤æˆåŠŸè¿”å› 1 ï¼Œå› ä¸ºå…ƒç´ ä¸å­˜åœ¨è€Œå¯¼è‡´åˆ é™¤å¤±è´¥è¿”å› 0 ã€‚
- */
-int setTypeRemove(robj *setobj, robj *value) {
-    long long llval;
 
-    // HT
-    if (setobj->encoding == REDIS_ENCODING_HT) {
-        // ä»å­—å…¸ä¸­åˆ é™¤é”®ï¼ˆé›†åˆå…ƒç´ ï¼‰
+/*
+ * ¶àÌ¬ remove ²Ù×÷
+ *
+ * É¾³ı³É¹¦·µ»Ø 1 £¬ÒòÎªÔªËØ²»´æÔÚ¶øµ¼ÖÂÉ¾³ıÊ§°Ü·µ»Ø 0 ¡£
+ */
+int setTypeRemove(robj *setobj, sds value) {
+    long long llval;
+    if (setobj->encoding == OBJ_ENCODING_HT) {
+        // ´Ó×ÖµäÖĞÉ¾³ı¼ü£¨¼¯ºÏÔªËØ£©
         if (dictDelete(setobj->ptr,value) == DICT_OK) {
-            // çœ‹æ˜¯å¦æœ‰å¿…è¦åœ¨åˆ é™¤ä¹‹åç¼©å°å­—å…¸çš„å¤§å°
+            // ¿´ÊÇ·ñÓĞ±ØÒªÔÚÉ¾³ıÖ®ºóËõĞ¡×ÖµäµÄ´óĞ¡
             if (htNeedsResize(setobj->ptr)) dictResize(setobj->ptr);
             return 1;
         }
 
     // INTSET
-    } else if (setobj->encoding == REDIS_ENCODING_INTSET) {
-        // å¦‚æœå¯¹è±¡çš„å€¼å¯ä»¥ç¼–ç ä¸ºæ•´æ•°çš„è¯ï¼Œé‚£ä¹ˆå°è¯•ä» intset ä¸­ç§»é™¤å…ƒç´ 
-        if (isObjectRepresentableAsLongLong(value,&llval) == REDIS_OK) {
+    } else if (setobj->encoding == OBJ_ENCODING_INTSET) {
+
+        // Èç¹û¶ÔÏóµÄÖµ¿ÉÒÔ±àÂëÎªÕûÊıµÄ»°£¬ÄÇÃ´³¢ÊÔ´Ó intset ÖĞÒÆ³ıÔªËØ
+        if (isSdsRepresentableAsLongLong(value,&llval) == C_OK) {
             int success;
             setobj->ptr = intsetRemove(setobj->ptr,llval,&success);
             if (success) return 1;
         }
-
-    // æœªçŸ¥ç¼–ç 
     } else {
-        redisPanic("Unknown set encoding");
+        serverPanic("Unknown set encoding");
     }
-
-    // åˆ é™¤å¤±è´¥
     return 0;
 }
 
+
 /*
- * å¤šæ€ ismember æ“ä½œ
+ * ¶àÌ¬ ismember ²Ù×÷
  */
-int setTypeIsMember(robj *subject, robj *value) {
+int setTypeIsMember(robj *subject, sds value) {
     long long llval;
-
-    // HT
-    if (subject->encoding == REDIS_ENCODING_HT) {
+    if (subject->encoding == OBJ_ENCODING_HT) {
         return dictFind((dict*)subject->ptr,value) != NULL;
-
-    // INTSET
-    } else if (subject->encoding == REDIS_ENCODING_INTSET) {
-        if (isObjectRepresentableAsLongLong(value,&llval) == REDIS_OK) {
+    } else if (subject->encoding == OBJ_ENCODING_INTSET) {
+        if (isSdsRepresentableAsLongLong(value,&llval) == C_OK) {
             return intsetFind((intset*)subject->ptr,llval);
         }
-
-    // æœªçŸ¥ç¼–ç 
     } else {
-        redisPanic("Unknown set encoding");
+        serverPanic("Unknown set encoding");
     }
-
-    // æŸ¥æ‰¾å¤±è´¥
     return 0;
 }
 
 /*
- * åˆ›å»ºå¹¶è¿”å›ä¸€ä¸ªå¤šæ€é›†åˆè¿­ä»£å™¨
+ * ´´½¨²¢·µ»ØÒ»¸ö¶àÌ¬¼¯ºÏµü´úÆ÷
  *
- * setTypeIterator å®šä¹‰åœ¨ redis.h
+ * setTypeIterator ¶¨ÒåÔÚ redis.h
  */
 setTypeIterator *setTypeInitIterator(robj *subject) {
-
     setTypeIterator *si = zmalloc(sizeof(setTypeIterator));
-    
-    // æŒ‡å‘è¢«è¿­ä»£çš„å¯¹è±¡
+    // Ö¸Ïò±»µü´úµÄ¶ÔÏó
     si->subject = subject;
-
-    // è®°å½•å¯¹è±¡çš„ç¼–ç 
+    // ¼ÇÂ¼¶ÔÏóµÄ±àÂë
     si->encoding = subject->encoding;
-
-    // HT
-    if (si->encoding == REDIS_ENCODING_HT) {
-        // å­—å…¸è¿­ä»£å™¨
+    if (si->encoding == OBJ_ENCODING_HT) {
+        // ×Öµäµü´úÆ÷
         si->di = dictGetIterator(subject->ptr);
 
+
     // INTSET
-    } else if (si->encoding == REDIS_ENCODING_INTSET) {
-        // ç´¢å¼•
+    } else if (si->encoding == OBJ_ENCODING_INTSET) {
+        // Ë÷Òı
         si->ii = 0;
-
-    // æœªçŸ¥ç¼–ç 
     } else {
-        redisPanic("Unknown set encoding");
+        serverPanic("Unknown set encoding");
     }
-
-    // è¿”å›è¿­ä»£å™¨
     return si;
 }
 
 /*
- * é‡Šæ”¾è¿­ä»£å™¨
+ * ÊÍ·Åµü´úÆ÷
  */
 void setTypeReleaseIterator(setTypeIterator *si) {
-
-    if (si->encoding == REDIS_ENCODING_HT)
+    if (si->encoding == OBJ_ENCODING_HT)
         dictReleaseIterator(si->di);
-
     zfree(si);
 }
 
 /* Move to the next entry in the set. Returns the object at the current
  * position.
  *
- * å–å‡ºè¢«è¿­ä»£å™¨æŒ‡å‘çš„å½“å‰é›†åˆå…ƒç´ ã€‚
+ * È¡³ö±»µü´úÆ÷Ö¸ÏòµÄµ±Ç°¼¯ºÏÔªËØ¡£
  *
  * Since set elements can be internally be stored as redis objects or
  * simple arrays of integers, setTypeNext returns the encoding of the
  * set object you are iterating, and will populate the appropriate pointer
- * (eobj) or (llobj) accordingly.
+ * (sdsele) or (llele) accordingly.
  *
- * å› ä¸ºé›†åˆå³å¯ä»¥ç¼–ç ä¸º intset ï¼Œä¹Ÿå¯ä»¥ç¼–ç ä¸ºå“ˆå¸Œè¡¨ï¼Œ
- * æ‰€ä»¥ç¨‹åºä¼šæ ¹æ®é›†åˆçš„ç¼–ç ï¼Œé€‰æ‹©å°†å€¼ä¿å­˜åˆ°é‚£ä¸ªå‚æ•°é‡Œï¼š
+ * Note that both the sdsele and llele pointers should be passed and cannot
+ * be NULL since the function will try to defensively populate the non
+ * used field with values which are easy to trap if misused.
+ * 
+ * ÒòÎª¼¯ºÏ¼´¿ÉÒÔ±àÂëÎª intset £¬Ò²¿ÉÒÔ±àÂëÎª¹şÏ£±í£¬
+ * ËùÒÔ³ÌĞò»á¸ù¾İ¼¯ºÏµÄ±àÂë£¬Ñ¡Ôñ½«Öµ±£´æµ½ÄÇ¸ö²ÎÊıÀï£º
  *
- *  - å½“ç¼–ç ä¸º intset æ—¶ï¼Œå…ƒç´ è¢«æŒ‡å‘åˆ° llobj å‚æ•°
+ *  - µ±±àÂëÎª intset Ê±£¬ÔªËØ±»Ö¸Ïòµ½ llobj ²ÎÊı
  *
- *  - å½“ç¼–ç ä¸ºå“ˆå¸Œè¡¨æ—¶ï¼Œå…ƒç´ è¢«æŒ‡å‘åˆ° eobj å‚æ•°
+ *  - µ±±àÂëÎª¹şÏ£±íÊ±£¬ÔªËØ±»Ö¸Ïòµ½ eobj ²ÎÊı
  *
- * å¹¶ä¸”å‡½æ•°ä¼šè¿”å›è¢«è¿­ä»£é›†åˆçš„ç¼–ç ï¼Œæ–¹ä¾¿è¯†åˆ«ã€‚
+ * ²¢ÇÒº¯Êı»á·µ»Ø±»µü´ú¼¯ºÏµÄ±àÂë£¬·½±ãÊ¶±ğ¡£
  *
- * When there are no longer elements -1 is returned.
+ * µ±¼¯ºÏÖĞµÄÔªËØÈ«²¿±»µü´úÍê±ÏÊ±£¬º¯Êı·µ»Ø -1 ¡£
  *
- * å½“é›†åˆä¸­çš„å…ƒç´ å…¨éƒ¨è¢«è¿­ä»£å®Œæ¯•æ—¶ï¼Œå‡½æ•°è¿”å› -1 ã€‚
- *
- * Returned objects ref count is not incremented, so this function is
- * copy on write friendly. 
- *
- * å› ä¸ºè¢«è¿”å›çš„å¯¹è±¡æ˜¯æ²¡æœ‰è¢«å¢åŠ å¼•ç”¨è®¡æ•°çš„ï¼Œ
- * æ‰€ä»¥è¿™ä¸ªå‡½æ•°æ˜¯å¯¹ copy-on-write å‹å¥½çš„ã€‚
- */
-int setTypeNext(setTypeIterator *si, robj **objele, int64_t *llele) {
+ * ÒòÎª±»·µ»ØµÄ¶ÔÏóÊÇÃ»ÓĞ±»Ôö¼ÓÒıÓÃ¼ÆÊıµÄ£¬
+ * ËùÒÔÕâ¸öº¯ÊıÊÇ¶Ô copy-on-write ÓÑºÃµÄ¡£
+ * When there are no longer elements -1 is returned. */
+int setTypeNext(setTypeIterator *si, sds *sdsele, int64_t *llele) {
 
-    // ä»å­—å…¸ä¸­å–å‡ºå¯¹è±¡
-    if (si->encoding == REDIS_ENCODING_HT) {
-
-        // æ›´æ–°è¿­ä»£å™¨
+    // ´Ó×ÖµäÖĞÈ¡³ö¶ÔÏó
+    if (si->encoding == OBJ_ENCODING_HT) {
+    	// ¸üĞÂµü´úÆ÷
         dictEntry *de = dictNext(si->di);
-
-        // å­—å…¸å·²è¿­ä»£å®Œ
+        // ×ÖµäÒÑµü´úÍê
         if (de == NULL) return -1;
 
-        // è¿”å›èŠ‚ç‚¹çš„é”®ï¼ˆé›†åˆçš„å…ƒç´ ï¼‰
-        *objele = dictGetKey(de);
+        // ·µ»Ø½ÚµãµÄ¼ü£¨¼¯ºÏµÄÔªËØ£©
+        *sdsele = dictGetKey(de);
+        *llele = -123456789; /* Not needed. Defensive. */
 
-    // ä» intset ä¸­å–å‡ºå…ƒç´ 
-    } else if (si->encoding == REDIS_ENCODING_INTSET) {
+    // ´Ó intset ÖĞÈ¡³öÔªËØ
+    } else if (si->encoding == OBJ_ENCODING_INTSET) {
         if (!intsetGet(si->subject->ptr,si->ii++,llele))
             return -1;
+        *sdsele = NULL; /* Not needed. Defensive. */
+    } else {
+        serverPanic("Wrong set encoding in setTypeNext");
     }
-
-    // è¿”å›ç¼–ç 
+    // ·µ»Ø±àÂë
     return si->encoding;
 }
 
 /* The not copy on write friendly version but easy to use version
- * of setTypeNext() is setTypeNextObject(), returning new objects
- * or incrementing the ref count of returned objects. So if you don't
- * retain a pointer to this object you should call decrRefCount() against it.
+ * of setTypeNext() is setTypeNextObject(), returning new SDS
+ * strings. So if you don't retain a pointer to this object you should call
+ * sdsfree() against it.
  *
- * setTypeNext çš„é copy-on-write å‹å¥½ç‰ˆæœ¬ï¼Œ
- * æ€»æ˜¯è¿”å›ä¸€ä¸ªæ–°çš„ã€æˆ–è€…å·²ç»å¢åŠ è¿‡å¼•ç”¨è®¡æ•°çš„å¯¹è±¡ã€‚
+ * setTypeNext µÄ·Ç copy-on-write ÓÑºÃ°æ±¾£¬
+ * ×ÜÊÇ·µ»ØÒ»¸öĞÂµÄ¡¢»òÕßÒÑ¾­Ôö¼Ó¹ıÒıÓÃ¼ÆÊıµÄ¶ÔÏó¡£
  *
- * è°ƒç”¨è€…åœ¨ä½¿ç”¨å®Œå¯¹è±¡ä¹‹åï¼Œåº”è¯¥å¯¹å¯¹è±¡è°ƒç”¨ decrRefCount() ã€‚
+ * µ÷ÓÃÕßÔÚÊ¹ÓÃÍê¶ÔÏóÖ®ºó£¬Ó¦¸Ã¶Ô¶ÔÏóµ÷ÓÃ decrRefCount() ¡£
  *
  * This function is the way to go for write operations where COW is not
- * an issue as the result will be anyway of incrementing the ref count. 
+ * an issue. 
  *
- * è¿™ä¸ªå‡½æ•°åº”è¯¥åœ¨é copy-on-write æ—¶è°ƒç”¨ã€‚
- */
-robj *setTypeNextObject(setTypeIterator *si) {
+ * Õâ¸öº¯ÊıÓ¦¸ÃÔÚ·Ç copy-on-write Ê±µ÷ÓÃ
+*/
+sds setTypeNextObject(setTypeIterator *si) {
     int64_t intele;
-    robj *objele;
+    sds sdsele;
     int encoding;
 
-    // å–å‡ºå…ƒç´ 
-    encoding = setTypeNext(si,&objele,&intele);
-    // æ€»æ˜¯ä¸ºå…ƒç´ åˆ›å»ºå¯¹è±¡
+    // È¡³öÔªËØ
+    encoding = setTypeNext(si,&sdsele,&intele);
+    // ×ÜÊÇÎªÔªËØ´´½¨¶ÔÏó
     switch(encoding) {
-        // å·²ä¸ºç©º
+        // ÒÑÎª¿Õ
         case -1:    return NULL;
-        // INTSET è¿”å›ä¸€ä¸ªæ•´æ•°å€¼ï¼Œéœ€è¦ä¸ºè¿™ä¸ªå€¼åˆ›å»ºå¯¹è±¡
-        case REDIS_ENCODING_INTSET:
-            return createStringObjectFromLongLong(intele);
-        // HT æœ¬èº«å·²ç»è¿”å›å¯¹è±¡äº†ï¼Œåªéœ€æ‰§è¡Œ incrRefCount()
-        case REDIS_ENCODING_HT:
-            incrRefCount(objele);
-            return objele;
+        // INTSET ·µ»ØÒ»¸öÕûÊıÖµ£¬ĞèÒªÎªÕâ¸öÖµ´´½¨¶ÔÏó
+        case OBJ_ENCODING_INTSET:
+            return sdsfromlonglong(intele);
+        // HT ±¾ÉíÒÑ¾­·µ»Ø¶ÔÏóÁË£¬Ö»ĞèÖ´ĞĞ incrRefCount()
+        case OBJ_ENCODING_HT:
+            return sdsdup(sdsele);
         default:
-            redisPanic("Unsupported encoding");
+            serverPanic("Unsupported encoding");
     }
-
     return NULL; /* just to suppress warnings */
 }
 
 /* Return random element from a non empty set.
  *
- * ä»éç©ºé›†åˆä¸­éšæœºå–å‡ºä¸€ä¸ªå…ƒç´ ã€‚
+ * ´Ó·Ç¿Õ¼¯ºÏÖĞËæ»úÈ¡³öÒ»¸öÔªËØ¡£
  *
- * The returned element can be a int64_t value if the set is encoded
- * as an "intset" blob of integers, or a redis object if the set
+ * The returned element can be an int64_t value if the set is encoded
+ * as an "intset" blob of integers, or an SDS string if the set
  * is a regular set.
  *
- * å¦‚æœé›†åˆçš„ç¼–ç ä¸º intset ï¼Œé‚£ä¹ˆå°†å…ƒç´ æŒ‡å‘ int64_t æŒ‡é’ˆ llele ã€‚
- * å¦‚æœé›†åˆçš„ç¼–ç ä¸º HT ï¼Œé‚£ä¹ˆå°†å…ƒç´ å¯¹è±¡æŒ‡å‘å¯¹è±¡æŒ‡é’ˆ objele ã€‚
+ * Èç¹û¼¯ºÏµÄ±àÂëÎª intset £¬ÄÇÃ´½«ÔªËØÖ¸Ïò int64_t Ö¸Õë llele ¡£
+ * Èç¹û¼¯ºÏµÄ±àÂëÎª HT £¬ÄÇÃ´½«ÔªËØ¶ÔÏóÖ¸Ïò¶ÔÏóÖ¸Õë objele ¡£
  *
  * The caller provides both pointers to be populated with the right
  * object. The return value of the function is the object->encoding
  * field of the object and is used by the caller to check if the
  * int64_t pointer or the redis object pointer was populated.
- *
- * å‡½æ•°çš„è¿”å›å€¼ä¸ºé›†åˆçš„ç¼–ç æ–¹å¼ï¼Œé€šè¿‡è¿™ä¸ªè¿”å›å€¼å¯ä»¥çŸ¥é“é‚£ä¸ªæŒ‡é’ˆä¿å­˜äº†å…ƒç´ çš„å€¼ã€‚
- *
- * When an object is returned (the set was a real set) the ref count
- * of the object is not incremented so this function can be considered
- * copy on write friendly. 
- *
- * å› ä¸ºè¢«è¿”å›çš„å¯¹è±¡æ˜¯æ²¡æœ‰è¢«å¢åŠ å¼•ç”¨è®¡æ•°çš„ï¼Œ
- * æ‰€ä»¥è¿™ä¸ªå‡½æ•°æ˜¯å¯¹ copy-on-write å‹å¥½çš„ã€‚
- */
-int setTypeRandomElement(robj *setobj, robj **objele, int64_t *llele) {
+ * º¯ÊıµÄ·µ»ØÖµÎª¼¯ºÏµÄ±àÂë·½Ê½£¬Í¨¹ıÕâ¸ö·µ»ØÖµ¿ÉÒÔÖªµÀÄÇ¸öÖ¸Õë±£´æÁËÔªËØµÄÖµ¡£
 
-    if (setobj->encoding == REDIS_ENCODING_HT) {
-        dictEntry *de = dictGetRandomKey(setobj->ptr);
-        *objele = dictGetKey(de);
-
-    } else if (setobj->encoding == REDIS_ENCODING_INTSET) {
+ * Note that both the sdsele and llele pointers should be passed and cannot
+ * be NULL since the function will try to defensively populate the non
+ * used field with values which are easy to trap if misused. 
+ * ÒòÎª±»·µ»ØµÄ¶ÔÏóÊÇÃ»ÓĞ±»Ôö¼ÓÒıÓÃ¼ÆÊıµÄ£¬
+ * ËùÒÔÕâ¸öº¯ÊıÊÇ¶Ô copy-on-write ÓÑºÃµÄ¡£
+*/
+int setTypeRandomElement(robj *setobj, sds *sdsele, int64_t *llele) {
+    if (setobj->encoding == OBJ_ENCODING_HT) {
+        dictEntry *de = dictGetFairRandomKey(setobj->ptr);
+        *sdsele = dictGetKey(de);
+        *llele = -123456789; /* Not needed. Defensive. */
+    } else if (setobj->encoding == OBJ_ENCODING_INTSET) {
         *llele = intsetRandom(setobj->ptr);
-
+        *sdsele = NULL; /* Not needed. Defensive. */
     } else {
-        redisPanic("Unknown set encoding");
+        serverPanic("Unknown set encoding");
     }
-
     return setobj->encoding;
 }
 
+
 /*
- * é›†åˆå¤šæ€ size å‡½æ•°
+ * ¼¯ºÏ¶àÌ¬ size º¯Êı
  */
-unsigned long setTypeSize(robj *subject) {
-
-    if (subject->encoding == REDIS_ENCODING_HT) {
-        return dictSize((dict*)subject->ptr);
-
-    } else if (subject->encoding == REDIS_ENCODING_INTSET) {
-        return intsetLen((intset*)subject->ptr);
-
+unsigned long setTypeSize(const robj *subject) {
+    if (subject->encoding == OBJ_ENCODING_HT) {
+        return dictSize((const dict*)subject->ptr);
+    } else if (subject->encoding == OBJ_ENCODING_INTSET) {
+        return intsetLen((const intset*)subject->ptr);
     } else {
-        redisPanic("Unknown set encoding");
+        serverPanic("Unknown set encoding");
     }
 }
 
-/* Convert the set to specified encoding. 
+/* Convert the set to specified encoding. The resulting dict (when converting
  *
- * å°†é›†åˆå¯¹è±¡ setobj çš„ç¼–ç è½¬æ¢ä¸º REDIS_ENCODING_HT ã€‚
+ * ½«¼¯ºÏ¶ÔÏó setobj µÄ±àÂë×ª»»Îª REDIS_ENCODING_HT ¡£
  *
  * The resulting dict (when converting to a hash table)
  * is presized to hold the number of elements in the original set.
  *
- * æ–°åˆ›å»ºçš„ç»“æœå­—å…¸ä¼šè¢«é¢„å…ˆåˆ†é…ä¸ºå’ŒåŸæ¥çš„é›†åˆä¸€æ ·å¤§ã€‚
+ * ĞÂ´´½¨µÄ½á¹û×Öµä»á±»Ô¤ÏÈ·ÖÅäÎªºÍÔ­À´µÄ¼¯ºÏÒ»Ñù´ó¡£
  */
 void setTypeConvert(robj *setobj, int enc) {
-
     setTypeIterator *si;
 
-    // ç¡®è®¤ç±»å‹å’Œç¼–ç æ­£ç¡®
-    redisAssertWithInfo(NULL,setobj,setobj->type == REDIS_SET &&
-                             setobj->encoding == REDIS_ENCODING_INTSET);
+    // È·ÈÏÀàĞÍºÍ±àÂëÕıÈ·
+    serverAssertWithInfo(NULL,setobj,setobj->type == OBJ_SET &&
+                             setobj->encoding == OBJ_ENCODING_INTSET);
 
-    if (enc == REDIS_ENCODING_HT) {
+    if (enc == OBJ_ENCODING_HT) {
         int64_t intele;
-        // åˆ›å»ºæ–°å­—å…¸
+        // ´´½¨ĞÂ×Öµä
         dict *d = dictCreate(&setDictType,NULL);
-        robj *element;
+        sds element;
 
         /* Presize the dict to avoid rehashing */
-        // é¢„å…ˆæ‰©å±•ç©ºé—´
+        // Ô¤ÏÈÀ©Õ¹¿Õ¼ä
         dictExpand(d,intsetLen(setobj->ptr));
 
         /* To add the elements we extract integers and create redis objects */
-        // éå†é›†åˆï¼Œå¹¶å°†å…ƒç´ æ·»åŠ åˆ°å­—å…¸ä¸­
+        // ±éÀú¼¯ºÏ£¬²¢½«ÔªËØÌí¼Óµ½×ÖµäÖĞ
         si = setTypeInitIterator(setobj);
-        while (setTypeNext(si,NULL,&intele) != -1) {
-            element = createStringObjectFromLongLong(intele);
-            redisAssertWithInfo(NULL,element,dictAdd(d,element,NULL) == DICT_OK);
+        while (setTypeNext(si,&element,&intele) != -1) {
+            element = sdsfromlonglong(intele);
+            serverAssert(dictAdd(d,element,NULL) == DICT_OK);
         }
         setTypeReleaseIterator(si);
 
-        // æ›´æ–°é›†åˆçš„ç¼–ç 
-        setobj->encoding = REDIS_ENCODING_HT;
+        // ¸üĞÂ¼¯ºÏµÄ±àÂë
+        setobj->encoding = OBJ_ENCODING_HT;
         zfree(setobj->ptr);
-        // æ›´æ–°é›†åˆçš„å€¼å¯¹è±¡
+        // ¸üĞÂ¼¯ºÏµÄÖµ¶ÔÏó
         setobj->ptr = d;
     } else {
-        redisPanic("Unsupported set conversion");
+        serverPanic("Unsupported set conversion");
     }
 }
 
-void saddCommand(redisClient *c) {
+/* This is a helper function for the COPY command.
+ * Duplicate a set object, with the guarantee that the returned object
+ * has the same encoding as the original one.
+ *
+ * The resulting object always has refcount set to 1 */
+robj *setTypeDup(robj *o) {
+    robj *set;
+    setTypeIterator *si;
+    sds elesds;
+    int64_t intobj;
+
+    serverAssert(o->type == OBJ_SET);
+
+    /* Create a new set object that have the same encoding as the original object's encoding */
+    if (o->encoding == OBJ_ENCODING_INTSET) {
+        intset *is = o->ptr;
+        size_t size = intsetBlobLen(is);
+        intset *newis = zmalloc(size);
+        memcpy(newis,is,size);
+        set = createObject(OBJ_SET, newis);
+        set->encoding = OBJ_ENCODING_INTSET;
+    } else if (o->encoding == OBJ_ENCODING_HT) {
+        set = createSetObject();
+        dict *d = o->ptr;
+        dictExpand(set->ptr, dictSize(d));
+        si = setTypeInitIterator(o);
+        while (setTypeNext(si, &elesds, &intobj) != -1) {
+            setTypeAdd(set, elesds);
+        }
+        setTypeReleaseIterator(si);
+    } else {
+        serverPanic("Unknown set encoding");
+    }
+    return set;
+}
+
+void saddCommand(client *c) {
     robj *set;
     int j, added = 0;
 
-    // å–å‡ºé›†åˆå¯¹è±¡
+    // È¡³ö¼¯ºÏ¶ÔÏó
     set = lookupKeyWrite(c->db,c->argv[1]);
-
-    // å¯¹è±¡ä¸å­˜åœ¨ï¼Œåˆ›å»ºä¸€ä¸ªæ–°çš„ï¼Œå¹¶å°†å®ƒå…³è”åˆ°æ•°æ®åº“
+    if (checkType(c,set,OBJ_SET)) return;
+    // ¶ÔÏó²»´æÔÚ£¬´´½¨Ò»¸öĞÂµÄ£¬²¢½«Ëü¹ØÁªµ½Êı¾İ¿â
     if (set == NULL) {
-        set = setTypeCreate(c->argv[2]);
+        set = setTypeCreate(c->argv[2]->ptr);
         dbAdd(c->db,c->argv[1],set);
-
-    // å¯¹è±¡å­˜åœ¨ï¼Œæ£€æŸ¥ç±»å‹
-    } else {
-        if (set->type != REDIS_SET) {
-            addReply(c,shared.wrongtypeerr);
-            return;
-        }
+    // ¶ÔÏó´æÔÚ£¬¼ì²éÀàĞÍ
     }
 
-    // å°†æ‰€æœ‰è¾“å…¥å…ƒç´ æ·»åŠ åˆ°é›†åˆä¸­
+    // ½«ËùÓĞÊäÈëÔªËØÌí¼Óµ½¼¯ºÏÖĞ
     for (j = 2; j < c->argc; j++) {
-        c->argv[j] = tryObjectEncoding(c->argv[j]);
-        // åªæœ‰å…ƒç´ æœªå­˜åœ¨äºé›†åˆæ—¶ï¼Œæ‰ç®—ä¸€æ¬¡æˆåŠŸæ·»åŠ 
-        if (setTypeAdd(set,c->argv[j])) added++;
+        // Ö»ÓĞÔªËØÎ´´æÔÚÓÚ¼¯ºÏÊ±£¬²ÅËãÒ»´Î³É¹¦Ìí¼Ó
+        if (setTypeAdd(set,c->argv[j]->ptr)) added++;
     }
-
-    // å¦‚æœæœ‰è‡³å°‘ä¸€ä¸ªå…ƒç´ è¢«æˆåŠŸæ·»åŠ ï¼Œé‚£ä¹ˆæ‰§è¡Œä»¥ä¸‹ç¨‹åº
+    // Èç¹ûÓĞÖÁÉÙÒ»¸öÔªËØ±»³É¹¦Ìí¼Ó£¬ÄÇÃ´Ö´ĞĞÒÔÏÂ³ÌĞò
     if (added) {
-        // å‘é€é”®ä¿®æ”¹ä¿¡å·
-        signalModifiedKey(c->db,c->argv[1]);
-        // å‘é€äº‹ä»¶é€šçŸ¥
-        notifyKeyspaceEvent(REDIS_NOTIFY_SET,"sadd",c->argv[1],c->db->id);
+        // ·¢ËÍ¼üĞŞ¸ÄĞÅºÅ
+        signalModifiedKey(c,c->db,c->argv[1]);
+        notifyKeyspaceEvent(NOTIFY_SET,"sadd",c->argv[1],c->db->id);
     }
-
-    // å°†æ•°æ®åº“è®¾ä¸ºè„
+    // ½«Êı¾İ¿âÉèÎªÔà
     server.dirty += added;
-
-    // è¿”å›æ·»åŠ å…ƒç´ çš„æ•°é‡
+    // ·µ»ØÌí¼ÓÔªËØµÄÊıÁ¿
     addReplyLongLong(c,added);
 }
 
-void sremCommand(redisClient *c) {
+void sremCommand(client *c) {
     robj *set;
     int j, deleted = 0, keyremoved = 0;
 
-    // å–å‡ºé›†åˆå¯¹è±¡
+    // È¡³ö¼¯ºÏ¶ÔÏó
     if ((set = lookupKeyWriteOrReply(c,c->argv[1],shared.czero)) == NULL ||
-        checkType(c,set,REDIS_SET)) return;
+        checkType(c,set,OBJ_SET)) return;
 
-    // åˆ é™¤è¾“å…¥çš„æ‰€æœ‰å…ƒç´ 
+    // É¾³ıÊäÈëµÄËùÓĞÔªËØ
     for (j = 2; j < c->argc; j++) {
-        
-        // åªæœ‰å…ƒç´ åœ¨é›†åˆä¸­æ—¶ï¼Œæ‰ç®—ä¸€æ¬¡æˆåŠŸåˆ é™¤
-        if (setTypeRemove(set,c->argv[j])) {
+
+        // Ö»ÓĞÔªËØÔÚ¼¯ºÏÖĞÊ±£¬²ÅËãÒ»´Î³É¹¦É¾³ı
+        if (setTypeRemove(set,c->argv[j]->ptr)) {
             deleted++;
-            // å¦‚æœé›†åˆå·²ç»ä¸ºç©ºï¼Œé‚£ä¹ˆåˆ é™¤é›†åˆå¯¹è±¡
+            // Èç¹û¼¯ºÏÒÑ¾­Îª¿Õ£¬ÄÇÃ´É¾³ı¼¯ºÏ¶ÔÏó
             if (setTypeSize(set) == 0) {
                 dbDelete(c->db,c->argv[1]);
                 keyremoved = 1;
@@ -473,38 +468,31 @@ void sremCommand(redisClient *c) {
             }
         }
     }
-
-    // å¦‚æœæœ‰è‡³å°‘ä¸€ä¸ªå…ƒç´ è¢«æˆåŠŸåˆ é™¤ï¼Œé‚£ä¹ˆæ‰§è¡Œä»¥ä¸‹ç¨‹åº
+    // Èç¹ûÓĞÖÁÉÙÒ»¸öÔªËØ±»³É¹¦É¾³ı£¬ÄÇÃ´Ö´ĞĞÒÔÏÂ³ÌĞò
     if (deleted) {
-        // å‘é€é”®ä¿®æ”¹ä¿¡å·
-        signalModifiedKey(c->db,c->argv[1]);
-        // å‘é€äº‹ä»¶é€šçŸ¥
-        notifyKeyspaceEvent(REDIS_NOTIFY_SET,"srem",c->argv[1],c->db->id);
-        // å‘é€äº‹ä»¶é€šçŸ¥
+
+        // ·¢ËÍ¼üĞŞ¸ÄĞÅºÅ
+        signalModifiedKey(c,c->db,c->argv[1]);
+        notifyKeyspaceEvent(NOTIFY_SET,"srem",c->argv[1],c->db->id);
         if (keyremoved)
-            notifyKeyspaceEvent(REDIS_NOTIFY_GENERIC,"del",c->argv[1],
+            notifyKeyspaceEvent(NOTIFY_GENERIC,"del",c->argv[1],
                                 c->db->id);
-        // å°†æ•°æ®åº“è®¾ä¸ºè„
         server.dirty += deleted;
     }
-    
-    // å°†è¢«æˆåŠŸåˆ é™¤å…ƒç´ çš„æ•°é‡ä½œä¸ºå›å¤
     addReplyLongLong(c,deleted);
 }
 
-void smoveCommand(redisClient *c) {
+void smoveCommand(client *c) {
     robj *srcset, *dstset, *ele;
-
-    // å–å‡ºæºé›†åˆ
+    // È¡³öÔ´¼¯ºÏ
     srcset = lookupKeyWrite(c->db,c->argv[1]);
-    // å–å‡ºç›®æ ‡é›†åˆ
+    // È¡³öÄ¿±ê¼¯ºÏ
     dstset = lookupKeyWrite(c->db,c->argv[2]);
-
-    // ç¼–ç å…ƒç´ 
-    ele = c->argv[3] = tryObjectEncoding(c->argv[3]);
+    // ±àÂëÔªËØ
+    ele = c->argv[3];
 
     /* If the source key does not exist return 0 */
-    // æºé›†åˆä¸å­˜åœ¨ï¼Œç›´æ¥è¿”å›
+    // Ô´¼¯ºÏ²»´æÔÚ£¬Ö±½Ó·µ»Ø
     if (srcset == NULL) {
         addReply(c,shared.czero);
         return;
@@ -512,198 +500,367 @@ void smoveCommand(redisClient *c) {
 
     /* If the source key has the wrong type, or the destination key
      * is set and has the wrong type, return with an error. */
-    // å¦‚æœæºé›†åˆçš„ç±»å‹é”™è¯¯
-    // æˆ–è€…ç›®æ ‡é›†åˆå­˜åœ¨ã€ä½†æ˜¯ç±»å‹é”™è¯¯
-    // é‚£ä¹ˆç›´æ¥è¿”å›
-    if (checkType(c,srcset,REDIS_SET) ||
-        (dstset && checkType(c,dstset,REDIS_SET))) return;
+    // Èç¹ûÔ´¼¯ºÏµÄÀàĞÍ´íÎó
+    // »òÕßÄ¿±ê¼¯ºÏ´æÔÚ¡¢µ«ÊÇÀàĞÍ´íÎó
+    // ÄÇÃ´Ö±½Ó·µ»Ø
+    if (checkType(c,srcset,OBJ_SET) ||
+        checkType(c,dstset,OBJ_SET)) return;
 
     /* If srcset and dstset are equal, SMOVE is a no-op */
-    // å¦‚æœæºé›†åˆå’Œç›®æ ‡é›†åˆç›¸ç­‰ï¼Œé‚£ä¹ˆç›´æ¥è¿”å›
+    // Èç¹ûÔ´¼¯ºÏºÍÄ¿±ê¼¯ºÏÏàµÈ£¬ÄÇÃ´Ö±½Ó·µ»Ø
     if (srcset == dstset) {
-        addReply(c,shared.cone);
+        addReply(c,setTypeIsMember(srcset,ele->ptr) ?
+            shared.cone : shared.czero);
         return;
     }
 
     /* If the element cannot be removed from the src set, return 0. */
-    // ä»æºé›†åˆä¸­ç§»é™¤ç›®æ ‡å…ƒç´ 
-    // å¦‚æœç›®æ ‡å…ƒç´ ä¸å­˜åœ¨äºæºé›†åˆä¸­ï¼Œé‚£ä¹ˆç›´æ¥è¿”å›
-    if (!setTypeRemove(srcset,ele)) {
+    // ´ÓÔ´¼¯ºÏÖĞÒÆ³ıÄ¿±êÔªËØ
+    // Èç¹ûÄ¿±êÔªËØ²»´æÔÚÓÚÔ´¼¯ºÏÖĞ£¬ÄÇÃ´Ö±½Ó·µ»Ø
+    if (!setTypeRemove(srcset,ele->ptr)) {
         addReply(c,shared.czero);
         return;
     }
-
-    // å‘é€äº‹ä»¶é€šçŸ¥
-    notifyKeyspaceEvent(REDIS_NOTIFY_SET,"srem",c->argv[1],c->db->id);
+    // ·¢ËÍÊÂ¼şÍ¨Öª
+    notifyKeyspaceEvent(NOTIFY_SET,"srem",c->argv[1],c->db->id);
 
     /* Remove the src set from the database when empty */
-    // å¦‚æœæºé›†åˆå·²ç»ä¸ºç©ºï¼Œé‚£ä¹ˆå°†å®ƒä»æ•°æ®åº“ä¸­åˆ é™¤
+    // Èç¹ûÔ´¼¯ºÏÒÑ¾­Îª¿Õ£¬ÄÇÃ´½«Ëü´ÓÊı¾İ¿âÖĞÉ¾³ı
     if (setTypeSize(srcset) == 0) {
-        // åˆ é™¤é›†åˆå¯¹è±¡
+        // É¾³ı¼¯ºÏ¶ÔÏó
         dbDelete(c->db,c->argv[1]);
-        // å‘é€äº‹ä»¶é€šçŸ¥
-        notifyKeyspaceEvent(REDIS_NOTIFY_GENERIC,"del",c->argv[1],c->db->id);
+
+        // ·¢ËÍÊÂ¼şÍ¨Öª
+        notifyKeyspaceEvent(NOTIFY_GENERIC,"del",c->argv[1],c->db->id);
     }
 
-    // å‘é€é”®ä¿®æ”¹ä¿¡å·
-    signalModifiedKey(c->db,c->argv[1]);
-    signalModifiedKey(c->db,c->argv[2]);
-
-    // å°†æ•°æ®åº“è®¾ä¸ºè„
-    server.dirty++;
-
     /* Create the destination set when it doesn't exist */
-    // å¦‚æœç›®æ ‡é›†åˆä¸å­˜åœ¨ï¼Œé‚£ä¹ˆåˆ›å»ºå®ƒ
     if (!dstset) {
-        dstset = setTypeCreate(ele);
+        dstset = setTypeCreate(ele->ptr);
         dbAdd(c->db,c->argv[2],dstset);
     }
 
-    /* An extra key has changed when ele was successfully added to dstset */
-    // å°†å…ƒç´ æ·»åŠ åˆ°ç›®æ ‡é›†åˆ
-    if (setTypeAdd(dstset,ele)) {
-        // å°†æ•°æ®åº“è®¾ä¸ºè„
-        server.dirty++;
-        // å‘é€äº‹ä»¶é€šçŸ¥
-        notifyKeyspaceEvent(REDIS_NOTIFY_SET,"sadd",c->argv[2],c->db->id);
-    }
+    // ·¢ËÍ¼üĞŞ¸ÄĞÅºÅ
+    signalModifiedKey(c,c->db,c->argv[1]);
+    signalModifiedKey(c,c->db,c->argv[2]);
+    server.dirty++;
 
-    // å›å¤ 1 
+    // ½«ÔªËØÌí¼Óµ½Ä¿±ê¼¯ºÏ
+    /* An extra key has changed when ele was successfully added to dstset */
+    if (setTypeAdd(dstset,ele->ptr)) {
+        // ½«Êı¾İ¿âÉèÎªÔà
+        server.dirty++;
+        notifyKeyspaceEvent(NOTIFY_SET,"sadd",c->argv[2],c->db->id);
+    }
+    // »Ø¸´ 1 
     addReply(c,shared.cone);
 }
 
-void sismemberCommand(redisClient *c) {
+void sismemberCommand(client *c) {
     robj *set;
 
-    // å–å‡ºé›†åˆå¯¹è±¡
+    // È¡³ö¼¯ºÏ¶ÔÏó
     if ((set = lookupKeyReadOrReply(c,c->argv[1],shared.czero)) == NULL ||
-        checkType(c,set,REDIS_SET)) return;
+        checkType(c,set,OBJ_SET)) return;
 
-    // ç¼–ç è¾“å…¥å…ƒç´ 
-    c->argv[2] = tryObjectEncoding(c->argv[2]);
-
-    // æ£€æŸ¥æ˜¯å¦å­˜åœ¨
-    if (setTypeIsMember(set,c->argv[2]))
+    if (setTypeIsMember(set,c->argv[2]->ptr))
         addReply(c,shared.cone);
     else
         addReply(c,shared.czero);
 }
 
-void scardCommand(redisClient *c) {
+void smismemberCommand(client *c) {
+    robj *set;
+    int j;
+
+    /* Don't abort when the key cannot be found. Non-existing keys are empty
+     * sets, where SMISMEMBER should respond with a series of zeros. */
+    set = lookupKeyRead(c->db,c->argv[1]);
+    if (set && checkType(c,set,OBJ_SET)) return;
+
+    addReplyArrayLen(c,c->argc - 2);
+
+    for (j = 2; j < c->argc; j++) {
+        if (set && setTypeIsMember(set,c->argv[j]->ptr))
+            addReply(c,shared.cone);
+        else
+            addReply(c,shared.czero);
+    }
+}
+
+void scardCommand(client *c) {
     robj *o;
 
-    // å–å‡ºé›†åˆ
+    // È¡³ö¼¯ºÏ
     if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.czero)) == NULL ||
-        checkType(c,o,REDIS_SET)) return;
+        checkType(c,o,OBJ_SET)) return;
 
-    // è¿”å›é›†åˆçš„åŸºæ•°
+    // ·µ»Ø¼¯ºÏµÄ»ùÊı
     addReplyLongLong(c,setTypeSize(o));
 }
 
-void spopCommand(redisClient *c) {
-    robj *set, *ele, *aux;
+/* Handle the "SPOP key <count>" variant. The normal version of the
+ * command is handled by the spopCommand() function itself. */
+
+/* How many times bigger should be the set compared to the remaining size
+ * for us to use the "create new set" strategy? Read later in the
+ * implementation for more info. */
+#define SPOP_MOVE_STRATEGY_MUL 5
+
+void spopWithCountCommand(client *c) {
+    long l;
+    unsigned long count, size;
+    robj *set;
+
+    /* Get the count argument */
+    if (getPositiveLongFromObjectOrReply(c,c->argv[2],&l,NULL) != C_OK) return;
+    count = (unsigned long) l;
+
+    /* Make sure a key with the name inputted exists, and that it's type is
+     * indeed a set. Otherwise, return nil */
+    if ((set = lookupKeyWriteOrReply(c,c->argv[1],shared.emptyset[c->resp]))
+        == NULL || checkType(c,set,OBJ_SET)) return;
+
+    /* If count is zero, serve an empty set ASAP to avoid special
+     * cases later. */
+    if (count == 0) {
+        addReply(c,shared.emptyset[c->resp]);
+        return;
+    }
+
+    size = setTypeSize(set);
+
+    /* Generate an SPOP keyspace notification */
+    notifyKeyspaceEvent(NOTIFY_SET,"spop",c->argv[1],c->db->id);
+    server.dirty += (count >= size) ? size : count;
+
+    /* CASE 1:
+     * The number of requested elements is greater than or equal to
+     * the number of elements inside the set: simply return the whole set. */
+    if (count >= size) {
+        /* We just return the entire set */
+        sunionDiffGenericCommand(c,c->argv+1,1,NULL,SET_OP_UNION);
+
+        /* Delete the set as it is now empty */
+        dbDelete(c->db,c->argv[1]);
+        notifyKeyspaceEvent(NOTIFY_GENERIC,"del",c->argv[1],c->db->id);
+
+        /* Propagate this command as a DEL operation */
+        rewriteClientCommandVector(c,2,shared.del,c->argv[1]);
+        signalModifiedKey(c,c->db,c->argv[1]);
+        return;
+    }
+
+    /* Case 2 and 3 require to replicate SPOP as a set of SREM commands.
+     * Prepare our replication argument vector. Also send the array length
+     * which is common to both the code paths. */
+    robj *propargv[3];
+    propargv[0] = shared.srem;
+    propargv[1] = c->argv[1];
+    addReplySetLen(c,count);
+
+    /* Common iteration vars. */
+    sds sdsele;
+    robj *objele;
+    int encoding;
+    int64_t llele;
+    unsigned long remaining = size-count; /* Elements left after SPOP. */
+
+    /* If we are here, the number of requested elements is less than the
+     * number of elements inside the set. Also we are sure that count < size.
+     * Use two different strategies.
+     *
+     * CASE 2: The number of elements to return is small compared to the
+     * set size. We can just extract random elements and return them to
+     * the set. */
+    if (remaining*SPOP_MOVE_STRATEGY_MUL > count) {
+        while(count--) {
+            /* Emit and remove. */
+            encoding = setTypeRandomElement(set,&sdsele,&llele);
+            if (encoding == OBJ_ENCODING_INTSET) {
+                addReplyBulkLongLong(c,llele);
+                objele = createStringObjectFromLongLong(llele);
+                set->ptr = intsetRemove(set->ptr,llele,NULL);
+            } else {
+                addReplyBulkCBuffer(c,sdsele,sdslen(sdsele));
+                objele = createStringObject(sdsele,sdslen(sdsele));
+                setTypeRemove(set,sdsele);
+            }
+
+            /* Replicate/AOF this command as an SREM operation */
+            propargv[2] = objele;
+            alsoPropagate(server.sremCommand,c->db->id,propargv,3,
+                PROPAGATE_AOF|PROPAGATE_REPL);
+            decrRefCount(objele);
+        }
+    } else {
+    /* CASE 3: The number of elements to return is very big, approaching
+     * the size of the set itself. After some time extracting random elements
+     * from such a set becomes computationally expensive, so we use
+     * a different strategy, we extract random elements that we don't
+     * want to return (the elements that will remain part of the set),
+     * creating a new set as we do this (that will be stored as the original
+     * set). Then we return the elements left in the original set and
+     * release it. */
+        robj *newset = NULL;
+
+        /* Create a new set with just the remaining elements. */
+        while(remaining--) {
+            encoding = setTypeRandomElement(set,&sdsele,&llele);
+            if (encoding == OBJ_ENCODING_INTSET) {
+                sdsele = sdsfromlonglong(llele);
+            } else {
+                sdsele = sdsdup(sdsele);
+            }
+            if (!newset) newset = setTypeCreate(sdsele);
+            setTypeAdd(newset,sdsele);
+            setTypeRemove(set,sdsele);
+            sdsfree(sdsele);
+        }
+
+        /* Transfer the old set to the client. */
+        setTypeIterator *si;
+        si = setTypeInitIterator(set);
+        while((encoding = setTypeNext(si,&sdsele,&llele)) != -1) {
+            if (encoding == OBJ_ENCODING_INTSET) {
+                addReplyBulkLongLong(c,llele);
+                objele = createStringObjectFromLongLong(llele);
+            } else {
+                addReplyBulkCBuffer(c,sdsele,sdslen(sdsele));
+                objele = createStringObject(sdsele,sdslen(sdsele));
+            }
+
+            /* Replicate/AOF this command as an SREM operation */
+            propargv[2] = objele;
+            alsoPropagate(server.sremCommand,c->db->id,propargv,3,
+                PROPAGATE_AOF|PROPAGATE_REPL);
+            decrRefCount(objele);
+        }
+        setTypeReleaseIterator(si);
+
+        /* Assign the new set as the key value. */
+        dbOverwrite(c->db,c->argv[1],newset);
+    }
+
+    /* Don't propagate the command itself even if we incremented the
+     * dirty counter. We don't want to propagate an SPOP command since
+     * we propagated the command as a set of SREMs operations using
+     * the alsoPropagate() API. */
+    preventCommandPropagation(c);
+    signalModifiedKey(c,c->db,c->argv[1]);
+}
+
+void spopCommand(client *c) {
+    robj *set, *ele;
+    sds sdsele;
     int64_t llele;
     int encoding;
 
-    // å–å‡ºé›†åˆ
-    if ((set = lookupKeyWriteOrReply(c,c->argv[1],shared.nullbulk)) == NULL ||
-        checkType(c,set,REDIS_SET)) return;
+    if (c->argc == 3) {
+        spopWithCountCommand(c);
+        return;
+    } else if (c->argc > 3) {
+        addReplyErrorObject(c,shared.syntaxerr);
+        return;
+    }
 
-    // ä»é›†åˆä¸­éšæœºå–å‡ºä¸€ä¸ªå…ƒç´ 
-    encoding = setTypeRandomElement(set,&ele,&llele);
+    /* Make sure a key with the name inputted exists, and that it's type is
+     * indeed a set */
 
-    // å°†è¢«å–å‡ºå…ƒç´ ä»é›†åˆä¸­åˆ é™¤
-    if (encoding == REDIS_ENCODING_INTSET) {
+    // È¡³ö¼¯ºÏ
+    if ((set = lookupKeyWriteOrReply(c,c->argv[1],shared.null[c->resp]))
+         == NULL || checkType(c,set,OBJ_SET)) return;
+
+    /* Get a random element from the set */
+    // ´Ó¼¯ºÏÖĞËæ»úÈ¡³öÒ»¸öÔªËØ
+    encoding = setTypeRandomElement(set,&sdsele,&llele);
+
+    /* Remove the element from the set */
+    // ½«±»È¡³öÔªËØ´Ó¼¯ºÏÖĞÉ¾³ı
+    if (encoding == OBJ_ENCODING_INTSET) {
         ele = createStringObjectFromLongLong(llele);
         set->ptr = intsetRemove(set->ptr,llele,NULL);
     } else {
-        incrRefCount(ele);
-        setTypeRemove(set,ele);
+        ele = createStringObject(sdsele,sdslen(sdsele));
+        setTypeRemove(set,ele->ptr);
     }
-
-    // å‘é€äº‹ä»¶é€šçŸ¥
-    notifyKeyspaceEvent(REDIS_NOTIFY_SET,"spop",c->argv[1],c->db->id);
+    // ·¢ËÍÊÂ¼şÍ¨Öª
+    notifyKeyspaceEvent(NOTIFY_SET,"spop",c->argv[1],c->db->id);
 
     /* Replicate/AOF this command as an SREM operation */
-    // å°†è¿™ä¸ªå‘½ä»¤å½“ä½œ SREM æ¥ä¼ æ’­ï¼Œé˜²æ­¢äº§ç”Ÿæœ‰å®³çš„éšæœºæ€§ï¼Œå¯¼è‡´æ•°æ®ä¸ä¸€è‡´
-    // ï¼ˆä¸åŒçš„æœåŠ¡å™¨éšæœºåˆ é™¤ä¸åŒçš„å…ƒç´ ï¼‰
-    aux = createStringObject("SREM",4);
-    rewriteClientCommandVector(c,3,aux,c->argv[1],ele);
-    decrRefCount(ele);
-    decrRefCount(aux);
 
-    // è¿”å›å›å¤
+    // ½«Õâ¸öÃüÁîµ±×÷ SREM À´´«²¥£¬·ÀÖ¹²úÉúÓĞº¦µÄËæ»úĞÔ£¬µ¼ÖÂÊı¾İ²»Ò»ÖÂ
+    // £¨²»Í¬µÄ·şÎñÆ÷Ëæ»úÉ¾³ı²»Í¬µÄÔªËØ£©
+    rewriteClientCommandVector(c,3,shared.srem,c->argv[1],ele);
+
+    /* Add the element to the reply */
     addReplyBulk(c,ele);
+    decrRefCount(ele);
 
-    // å¦‚æœé›†åˆå·²ç»ä¸ºç©ºï¼Œé‚£ä¹ˆä»æ•°æ®åº“ä¸­åˆ é™¤å®ƒ
+    /* Delete the set if it's empty */
     if (setTypeSize(set) == 0) {
-        // åˆ é™¤é›†åˆ
         dbDelete(c->db,c->argv[1]);
-        // å‘é€äº‹ä»¶é€šçŸ¥
-        notifyKeyspaceEvent(REDIS_NOTIFY_GENERIC,"del",c->argv[1],c->db->id);
+        notifyKeyspaceEvent(NOTIFY_GENERIC,"del",c->argv[1],c->db->id);
     }
 
-    // å‘é€é”®ä¿®æ”¹ä¿¡å·
-    signalModifiedKey(c->db,c->argv[1]);
-
-    // å°†æ•°æ®åº“è®¾ä¸ºè„
+    /* Set has been modified */
+    signalModifiedKey(c,c->db,c->argv[1]);
     server.dirty++;
 }
 
 /* handle the "SRANDMEMBER key <count>" variant. The normal version of the
  * command is handled by the srandmemberCommand() function itself. 
  *
- * å®ç° SRANDMEMBER key <count> å˜ç§ï¼Œ
- * åŸæœ¬çš„ SRANDMEMBER key ç”± srandmemberCommand() å®ç°
+ * ÊµÏÖ SRANDMEMBER key <count> ±äÖÖ£¬
+ * Ô­±¾µÄ SRANDMEMBER key ÓÉ srandmemberCommand() ÊµÏÖ
  */
 
 /* How many times bigger should be the set compared to the requested size
  * for us to don't use the "remove elements" strategy? Read later in the
  * implementation for more info. 
  *
- * å¦‚æœ count å‚æ•°ä¹˜ä»¥è¿™ä¸ªå¸¸é‡æ‰€å¾—çš„ç§¯ï¼Œæ¯”é›†åˆçš„åŸºæ•°è¦å¤§ï¼Œ
- * é‚£ä¹ˆç¨‹åºå°±ä¸ä½¿ç”¨â€œåˆ é™¤å…ƒç´ â€çš„ç­–ç•¥ã€‚
+ * Èç¹û count ²ÎÊı³ËÒÔÕâ¸ö³£Á¿ËùµÃµÄ»ı£¬±È¼¯ºÏµÄ»ùÊıÒª´ó£¬
+ * ÄÇÃ´³ÌĞò¾Í²»Ê¹ÓÃ¡°É¾³ıÔªËØ¡±µÄ²ßÂÔ¡£
  *
- * æ›´å¤šä¿¡æ¯è¯·å‚è€ƒåé¢çš„å‡½æ•°å®šä¹‰ã€‚
+ * ¸ü¶àĞÅÏ¢Çë²Î¿¼ºóÃæµÄº¯Êı¶¨Òå¡£
  */
 #define SRANDMEMBER_SUB_STRATEGY_MUL 3
 
-void srandmemberWithCountCommand(redisClient *c) {
+void srandmemberWithCountCommand(client *c) {
     long l;
     unsigned long count, size;
-
-    // é»˜è®¤åœ¨é›†åˆä¸­ä¸åŒ…å«é‡å¤å…ƒç´ 
+    // Ä¬ÈÏÔÚ¼¯ºÏÖĞ²»°üº¬ÖØ¸´ÔªËØ
     int uniq = 1;
-
-    robj *set, *ele;
+    robj *set;
+    sds ele;
     int64_t llele;
     int encoding;
 
     dict *d;
 
-    // å–å‡º l å‚æ•°
-    if (getLongFromObjectOrReply(c,c->argv[2],&l,NULL) != REDIS_OK) return;
+    // È¡³ö l ²ÎÊı
+    if (getLongFromObjectOrReply(c,c->argv[2],&l,NULL) != C_OK) return;
     if (l >= 0) {
-        // l ä¸ºæ­£æ•°ï¼Œè¡¨ç¤ºè¿”å›å…ƒç´ å„ä¸ç›¸åŒ
-        count = (unsigned) l;
+        // l ÎªÕıÊı£¬±íÊ¾·µ»ØÔªËØ¸÷²»ÏàÍ¬
+        count = (unsigned long) l;
     } else {
         /* A negative count means: return the same elements multiple times
          * (i.e. don't remove the extracted element after every extraction). */
-        // å¦‚æœ l ä¸ºè´Ÿæ•°ï¼Œé‚£ä¹ˆè¡¨ç¤ºè¿”å›çš„ç»“æœä¸­å¯ä»¥æœ‰é‡å¤å…ƒç´ 
+      // Èç¹û l Îª¸ºÊı£¬ÄÇÃ´±íÊ¾·µ»ØµÄ½á¹ûÖĞ¿ÉÒÔÓĞÖØ¸´ÔªËØ
         count = -l;
         uniq = 0;
     }
 
-    // å–å‡ºé›†åˆå¯¹è±¡
-    if ((set = lookupKeyReadOrReply(c,c->argv[1],shared.emptymultibulk))
-        == NULL || checkType(c,set,REDIS_SET)) return;
-    // å–å‡ºé›†åˆåŸºæ•°
+    // È¡³ö¼¯ºÏ¶ÔÏó
+    if ((set = lookupKeyReadOrReply(c,c->argv[1],shared.emptyarray))
+        == NULL || checkType(c,set,OBJ_SET)) return;
+    // È¡³ö¼¯ºÏ»ùÊı
     size = setTypeSize(set);
 
     /* If count is zero, serve it ASAP to avoid special cases later. */
-    // count ä¸º 0 ï¼Œç›´æ¥è¿”å›
+    // count Îª 0 £¬Ö±½Ó·µ»Ø
     if (count == 0) {
-        addReply(c,shared.emptymultibulk);
+        addReply(c,shared.emptyarray);
         return;
     }
 
@@ -712,24 +869,23 @@ void srandmemberWithCountCommand(redisClient *c) {
      * This case is trivial and can be served without auxiliary data
      * structures. 
      *
-     * æƒ…å½¢ 1ï¼šcount ä¸ºè´Ÿæ•°ï¼Œç»“æœé›†å¯ä»¥å¸¦æœ‰é‡å¤å…ƒç´ 
-     * ç›´æ¥ä»é›†åˆä¸­å–å‡ºå¹¶è¿”å› N ä¸ªéšæœºå…ƒç´ å°±å¯ä»¥äº†
+     * ÇéĞÎ 1£ºcount Îª¸ºÊı£¬½á¹û¼¯¿ÉÒÔ´øÓĞÖØ¸´ÔªËØ
+     * Ö±½Ó´Ó¼¯ºÏÖĞÈ¡³ö²¢·µ»Ø N ¸öËæ»úÔªËØ¾Í¿ÉÒÔÁË
      *
-     * è¿™ç§æƒ…å½¢ä¸éœ€è¦é¢å¤–çš„ç»“æ„æ¥ä¿å­˜ç»“æœé›†
-     */
-    if (!uniq) {
-        addReplyMultiBulkLen(c,count);
-
+     * ÕâÖÖÇéĞÎ²»ĞèÒª¶îÍâµÄ½á¹¹À´±£´æ½á¹û¼¯
+     * This case is the only one that also needs to return the
+     * elements in random order. */
+    if (!uniq || count == 1) {
+        addReplyArrayLen(c,count);
         while(count--) {
-            // å–å‡ºéšæœºå…ƒç´ 
+            // È¡³öËæ»úÔªËØ
             encoding = setTypeRandomElement(set,&ele,&llele);
-            if (encoding == REDIS_ENCODING_INTSET) {
+            if (encoding == OBJ_ENCODING_INTSET) {
                 addReplyBulkLongLong(c,llele);
             } else {
-                addReplyBulk(c,ele);
+                addReplyBulkCBuffer(c,ele,sdslen(ele));
             }
         }
-
         return;
     }
 
@@ -737,56 +893,69 @@ void srandmemberWithCountCommand(redisClient *c) {
      * The number of requested elements is greater than the number of
      * elements inside the set: simply return the whole set. 
      *
-     * å¦‚æœ count æ¯”é›†åˆçš„åŸºæ•°è¦å¤§ï¼Œé‚£ä¹ˆç›´æ¥è¿”å›æ•´ä¸ªé›†åˆ
+     * Èç¹û count ±È¼¯ºÏµÄ»ùÊıÒª´ó£¬ÄÇÃ´Ö±½Ó·µ»ØÕû¸ö¼¯ºÏ
      */
     if (count >= size) {
-        sunionDiffGenericCommand(c,c->argv+1,1,NULL,REDIS_OP_UNION);
+        setTypeIterator *si;
+        addReplyArrayLen(c,size);
+        si = setTypeInitIterator(set);
+        while ((encoding = setTypeNext(si,&ele,&llele)) != -1) {
+            if (encoding == OBJ_ENCODING_INTSET) {
+                addReplyBulkLongLong(c,llele);
+            } else {
+                addReplyBulkCBuffer(c,ele,sdslen(ele));
+            }
+            size--;
+        }
+        setTypeReleaseIterator(si);
+        serverAssert(size==0);
         return;
     }
 
     /* For CASE 3 and CASE 4 we need an auxiliary dictionary. */
-    // å¯¹äºæƒ…å½¢ 3 å’Œæƒ…å½¢ 4 ï¼Œéœ€è¦ä¸€ä¸ªé¢å¤–çš„å­—å…¸
-    d = dictCreate(&setDictType,NULL);
+    // ¶ÔÓÚÇéĞÎ 3 ºÍÇéĞÎ 4 £¬ĞèÒªÒ»¸ö¶îÍâµÄ×Öµä
+    d = dictCreate(&sdsReplyDictType,NULL);
 
     /* CASE 3:
      * 
-     * æƒ…å½¢ 3ï¼š
+     * ÇéĞÎ 3£º
      *
      * The number of elements inside the set is not greater than
      * SRANDMEMBER_SUB_STRATEGY_MUL times the number of requested elements.
      *
-     * count å‚æ•°ä¹˜ä»¥ SRANDMEMBER_SUB_STRATEGY_MUL çš„ç§¯æ¯”é›†åˆçš„åŸºæ•°è¦å¤§ã€‚
+     * count ²ÎÊı³ËÒÔ SRANDMEMBER_SUB_STRATEGY_MUL µÄ»ı±È¼¯ºÏµÄ»ùÊıÒª´ó¡£
      *
      * In this case we create a set from scratch with all the elements, and
      * subtract random elements to reach the requested number of elements.
      *
-     * åœ¨è¿™ç§æƒ…å†µä¸‹ï¼Œç¨‹åºåˆ›å»ºä¸€ä¸ªé›†åˆçš„å‰¯æœ¬ï¼Œ
-     * å¹¶ä»é›†åˆä¸­åˆ é™¤å…ƒç´ ï¼Œç›´åˆ°é›†åˆçš„åŸºæ•°ç­‰äº count å‚æ•°æŒ‡å®šçš„æ•°é‡ä¸ºæ­¢ã€‚
+     * ÔÚÕâÖÖÇé¿öÏÂ£¬³ÌĞò´´½¨Ò»¸ö¼¯ºÏµÄ¸±±¾£¬
+     * ²¢´Ó¼¯ºÏÖĞÉ¾³ıÔªËØ£¬Ö±µ½¼¯ºÏµÄ»ùÊıµÈÓÚ count ²ÎÊıÖ¸¶¨µÄÊıÁ¿ÎªÖ¹¡£
      *
      * This is done because if the number of requsted elements is just
      * a bit less than the number of elements in the set, the natural approach
      * used into CASE 3 is highly inefficient. 
      *
-     * ä½¿ç”¨è¿™ç§åšæ³•çš„åŸå› æ˜¯ï¼Œå½“ count çš„æ•°é‡æ¥è¿‘äºé›†åˆçš„åŸºæ•°æ—¶ï¼Œ
-     * ä»é›†åˆä¸­éšæœºå–å‡º count ä¸ªå‚æ•°çš„æ–¹æ³•æ˜¯éå¸¸ä½æ•ˆçš„ã€‚
+     * Ê¹ÓÃÕâÖÖ×ö·¨µÄÔ­ÒòÊÇ£¬µ± count µÄÊıÁ¿½Ó½üÓÚ¼¯ºÏµÄ»ùÊıÊ±£¬
+     * ´Ó¼¯ºÏÖĞËæ»úÈ¡³ö count ¸ö²ÎÊıµÄ·½·¨ÊÇ·Ç³£µÍĞ§µÄ¡£
      */
     if (count*SRANDMEMBER_SUB_STRATEGY_MUL > size) {
         setTypeIterator *si;
 
         /* Add all the elements into the temporary dictionary. */
-        // éå†é›†åˆï¼Œå°†æ‰€æœ‰å…ƒç´ æ·»åŠ åˆ°ä¸´æ—¶å­—å…¸ä¸­
+        // ±éÀú¼¯ºÏ£¬½«ËùÓĞÔªËØÌí¼Óµ½ÁÙÊ±×ÖµäÖĞ
         si = setTypeInitIterator(set);
-        while((encoding = setTypeNext(si,&ele,&llele)) != -1) {
+        dictExpand(d, size);
+        while ((encoding = setTypeNext(si,&ele,&llele)) != -1) {
             int retval = DICT_ERR;
 
-            // ä¸ºå…ƒç´ åˆ›å»ºå¯¹è±¡ï¼Œå¹¶æ·»åŠ åˆ°å­—å…¸ä¸­
-            if (encoding == REDIS_ENCODING_INTSET) {
-                retval = dictAdd(d,createStringObjectFromLongLong(llele),NULL);
+            // ÎªÔªËØ´´½¨¶ÔÏó£¬²¢Ìí¼Óµ½×ÖµäÖĞ
+            if (encoding == OBJ_ENCODING_INTSET) {
+                retval = dictAdd(d,sdsfromlonglong(llele),NULL);
             } else {
-                retval = dictAdd(d,dupStringObject(ele),NULL);
+                retval = dictAdd(d,sdsdup(ele),NULL);
             }
-            redisAssert(retval == DICT_OK);
-            /* ä¸Šé¢çš„ä»£ç å¯ä»¥é‡æ„ä¸º
+            serverAssert(retval == DICT_OK);
+            /* ÉÏÃæµÄ´úÂë¿ÉÒÔÖØ¹¹Îª
             
             robj *elem_obj;
             if (encoding == REDIS_ENCODING_INTSET) {
@@ -802,177 +971,181 @@ void srandmemberWithCountCommand(redisClient *c) {
             */
         }
         setTypeReleaseIterator(si);
-        redisAssert(dictSize(d) == size);
+        serverAssert(dictSize(d) == size);
 
         /* Remove random elements to reach the right count. */
-        // éšæœºåˆ é™¤å…ƒç´ ï¼Œç›´åˆ°é›†åˆåŸºæ•°ç­‰äº count å‚æ•°çš„å€¼
-        while(size > count) {
+        // Ëæ»úÉ¾³ıÔªËØ£¬Ö±µ½¼¯ºÏ»ùÊıµÈÓÚ count ²ÎÊıµÄÖµ
+        while (size > count) {
             dictEntry *de;
-
-            // å–å‡ºå¹¶åˆ é™¤éšæœºå…ƒç´ 
+            // È¡³ö²¢É¾³ıËæ»úÔªËØ
             de = dictGetRandomKey(d);
-            dictDelete(d,dictGetKey(de));
-
+            dictUnlink(d,dictGetKey(de));
+            sdsfree(dictGetKey(de));
+            dictFreeUnlinkedEntry(d,de);
             size--;
         }
     }
-    
+
     /* CASE 4: We have a big set compared to the requested number of elements.
      *
-     * æƒ…å½¢ 4 ï¼š count å‚æ•°è¦æ¯”é›†åˆåŸºæ•°å°å¾ˆå¤šã€‚
+     * ÇéĞÎ 4 £º count ²ÎÊıÒª±È¼¯ºÏ»ùÊıĞ¡ºÜ¶à¡£
      *
      * In this case we can simply get random elements from the set and add
      * to the temporary set, trying to eventually get enough unique elements
      * to reach the specified count. 
      *
-     * åœ¨è¿™ç§æƒ…å†µä¸‹ï¼Œæˆ‘ä»¬å¯ä»¥ç›´æ¥ä»é›†åˆä¸­éšæœºåœ°å–å‡ºå…ƒç´ ï¼Œ
-     * å¹¶å°†å®ƒæ·»åŠ åˆ°ç»“æœé›†åˆä¸­ï¼Œç›´åˆ°ç»“æœé›†çš„åŸºæ•°ç­‰äº count ä¸ºæ­¢ã€‚
+     * ÔÚÕâÖÖÇé¿öÏÂ£¬ÎÒÃÇ¿ÉÒÔÖ±½Ó´Ó¼¯ºÏÖĞËæ»úµØÈ¡³öÔªËØ£¬
+     * ²¢½«ËüÌí¼Óµ½½á¹û¼¯ºÏÖĞ£¬Ö±µ½½á¹û¼¯µÄ»ùÊıµÈÓÚ count ÎªÖ¹¡£
      */
     else {
         unsigned long added = 0;
+        sds sdsele;
 
-        while(added < count) {
-
-            // éšæœºåœ°ä»ç›®æ ‡é›†åˆä¸­å–å‡ºå…ƒç´ 
+        dictExpand(d, count);
+        while (added < count) {
+            // Ëæ»úµØ´ÓÄ¿±ê¼¯ºÏÖĞÈ¡³öÔªËØ
             encoding = setTypeRandomElement(set,&ele,&llele);
 
-            // å°†å…ƒç´ è½¬æ¢ä¸ºå¯¹è±¡
-            if (encoding == REDIS_ENCODING_INTSET) {
-                ele = createStringObjectFromLongLong(llele);
+            // ½«ÔªËØ×ª»»Îª¶ÔÏó
+            if (encoding == OBJ_ENCODING_INTSET) {
+                sdsele = sdsfromlonglong(llele);
             } else {
-                ele = dupStringObject(ele);
+                sdsele = sdsdup(ele);
             }
-
             /* Try to add the object to the dictionary. If it already exists
              * free it, otherwise increment the number of objects we have
              * in the result dictionary. */
-            // å°è¯•å°†å…ƒç´ æ·»åŠ åˆ°å­—å…¸ä¸­
-            // dictAdd åªæœ‰åœ¨å…ƒç´ ä¸å­˜åœ¨äºå­—å…¸æ—¶ï¼Œæ‰ä¼šè¿”å› 1
-            // å¦‚æœå¦‚æœç»“æœé›†å·²ç»æœ‰åŒæ ·çš„å…ƒç´ ï¼Œé‚£ä¹ˆç¨‹åºä¼šæ‰§è¡Œ else éƒ¨åˆ†
-            // åªæœ‰å…ƒç´ ä¸å­˜åœ¨äºç»“æœé›†æ—¶ï¼Œæ·»åŠ æ‰ä¼šæˆåŠŸ
-            if (dictAdd(d,ele,NULL) == DICT_OK)
+            // ³¢ÊÔ½«ÔªËØÌí¼Óµ½×ÖµäÖĞ
+            // dictAdd Ö»ÓĞÔÚÔªËØ²»´æÔÚÓÚ×ÖµäÊ±£¬²Å»á·µ»Ø 1
+            // Èç¹ûÈç¹û½á¹û¼¯ÒÑ¾­ÓĞÍ¬ÑùµÄÔªËØ£¬ÄÇÃ´³ÌĞò»áÖ´ĞĞ else ²¿·Ö
+            // Ö»ÓĞÔªËØ²»´æÔÚÓÚ½á¹û¼¯Ê±£¬Ìí¼Ó²Å»á³É¹¦
+            if (dictAdd(d,sdsele,NULL) == DICT_OK)
                 added++;
             else
-                decrRefCount(ele);
+                sdsfree(sdsele);
         }
     }
 
     /* CASE 3 & 4: send the result to the user. */
     {
-        // æƒ…å½¢ 3 å’Œ 4 ï¼šå°†ç»“æœé›†å›å¤ç»™å®¢æˆ·ç«¯
+        // ÇéĞÎ 3 ºÍ 4 £º½«½á¹û¼¯»Ø¸´¸ø¿Í»§¶Ë
         dictIterator *di;
         dictEntry *de;
 
-        addReplyMultiBulkLen(c,count);
-        // éå†ç»“æœé›†å…ƒç´ 
+        addReplyArrayLen(c,count);
+        // ±éÀú½á¹û¼¯ÔªËØ,
         di = dictGetIterator(d);
+           // »Ø¸´
         while((de = dictNext(di)) != NULL)
-            // å›å¤
-            addReplyBulk(c,dictGetKey(de));
+            addReplyBulkSds(c,dictGetKey(de));
         dictReleaseIterator(di);
         dictRelease(d);
     }
 }
 
-void srandmemberCommand(redisClient *c) {
-    robj *set, *ele;
+/* SRANDMEMBER [<count>] */
+void srandmemberCommand(client *c) {
+    robj *set;
+    sds ele;
     int64_t llele;
     int encoding;
 
-    // å¦‚æœå¸¦æœ‰ count å‚æ•°ï¼Œé‚£ä¹ˆè°ƒç”¨ srandmemberWithCountCommand æ¥å¤„ç†
+    // Èç¹û´øÓĞ count ²ÎÊı£¬ÄÇÃ´µ÷ÓÃ srandmemberWithCountCommand À´´¦Àí
     if (c->argc == 3) {
         srandmemberWithCountCommand(c);
         return;
-
-    // å‚æ•°é”™è¯¯
+    // ²ÎÊı´íÎó
     } else if (c->argc > 3) {
-        addReply(c,shared.syntaxerr);
+        addReplyErrorObject(c,shared.syntaxerr);
         return;
     }
 
-    // éšæœºå–å‡ºå•ä¸ªå…ƒç´ å°±å¯ä»¥äº†
+    /* Handle variant without <count> argument. Reply with simple bulk string */
+    // Ëæ»úÈ¡³öµ¥¸öÔªËØ¾Í¿ÉÒÔÁË
+    // È¡³ö¼¯ºÏ¶ÔÏó
+    if ((set = lookupKeyReadOrReply(c,c->argv[1],shared.null[c->resp]))
+        == NULL || checkType(c,set,OBJ_SET)) return;
 
-    // å–å‡ºé›†åˆå¯¹è±¡
-    if ((set = lookupKeyReadOrReply(c,c->argv[1],shared.nullbulk)) == NULL ||
-        checkType(c,set,REDIS_SET)) return;
-
-    // éšæœºå–å‡ºä¸€ä¸ªå…ƒç´ 
+    // Ëæ»úÈ¡³öÒ»¸öÔªËØ
     encoding = setTypeRandomElement(set,&ele,&llele);
-    // å›å¤
-    if (encoding == REDIS_ENCODING_INTSET) {
+    // »Ø¸´
+    if (encoding == OBJ_ENCODING_INTSET) {
         addReplyBulkLongLong(c,llele);
     } else {
-        addReplyBulk(c,ele);
+        addReplyBulkCBuffer(c,ele,sdslen(ele));
     }
 }
 
 /*
- * è®¡ç®—é›†åˆ s1 çš„åŸºæ•°å‡å»é›†åˆ s2 çš„åŸºæ•°ä¹‹å·®
+ * ¼ÆËã¼¯ºÏ s1 µÄ»ùÊı¼õÈ¥¼¯ºÏ s2 µÄ»ùÊıÖ®²î
  */
 int qsortCompareSetsByCardinality(const void *s1, const void *s2) {
-    return setTypeSize(*(robj**)s1)-setTypeSize(*(robj**)s2);
+    if (setTypeSize(*(robj**)s1) > setTypeSize(*(robj**)s2)) return 1;
+    if (setTypeSize(*(robj**)s1) < setTypeSize(*(robj**)s2)) return -1;
+    return 0;
 }
 
 /* This is used by SDIFF and in this case we can receive NULL that should
  * be handled as empty sets. 
  *
- * è®¡ç®—é›†åˆ s2 çš„åŸºæ•°å‡å»é›†åˆ s1 çš„åŸºæ•°ä¹‹å·®
+ * ¼ÆËã¼¯ºÏ s2 µÄ»ùÊı¼õÈ¥¼¯ºÏ s1 µÄ»ùÊıÖ®²î
  */
 int qsortCompareSetsByRevCardinality(const void *s1, const void *s2) {
     robj *o1 = *(robj**)s1, *o2 = *(robj**)s2;
+    unsigned long first = o1 ? setTypeSize(o1) : 0;
+    unsigned long second = o2 ? setTypeSize(o2) : 0;
 
-    return  (o2 ? setTypeSize(o2) : 0) - (o1 ? setTypeSize(o1) : 0);
+    if (first < second) return 1;
+    if (first > second) return -1;
+    return 0;
 }
 
-void sinterGenericCommand(redisClient *c, robj **setkeys, unsigned long setnum, robj *dstkey) {
-
-    // é›†åˆæ•°ç»„
+void sinterGenericCommand(client *c, robj **setkeys,
+                          unsigned long setnum, robj *dstkey) {
+    // ¼¯ºÏÊı×é
     robj **sets = zmalloc(sizeof(robj*)*setnum);
-
     setTypeIterator *si;
-    robj *eleobj, *dstset = NULL;
+    robj *dstset = NULL;
+    sds elesds;
     int64_t intobj;
     void *replylen = NULL;
     unsigned long j, cardinality = 0;
     int encoding;
 
     for (j = 0; j < setnum; j++) {
-
-        // å–å‡ºå¯¹è±¡
-        // ç¬¬ä¸€æ¬¡æ‰§è¡Œæ—¶ï¼Œå–å‡ºçš„æ˜¯ dest é›†åˆ
-        // ä¹‹åæ‰§è¡Œæ—¶ï¼Œå–å‡ºçš„éƒ½æ˜¯ source é›†åˆ
+        // È¡³ö¶ÔÏó
+        // µÚÒ»´ÎÖ´ĞĞÊ±£¬È¡³öµÄÊÇ dest ¼¯ºÏ
+        // Ö®ºóÖ´ĞĞÊ±£¬È¡³öµÄ¶¼ÊÇ source ¼¯ºÏ
         robj *setobj = dstkey ?
             lookupKeyWrite(c->db,setkeys[j]) :
             lookupKeyRead(c->db,setkeys[j]);
-
-        // å¯¹è±¡ä¸å­˜åœ¨ï¼Œæ”¾å¼ƒæ‰§è¡Œï¼Œè¿›è¡Œæ¸…ç†
+        // ¶ÔÏó²»´æÔÚ£¬·ÅÆúÖ´ĞĞ£¬½øĞĞÇåÀí
         if (!setobj) {
             zfree(sets);
             if (dstkey) {
                 if (dbDelete(c->db,dstkey)) {
-                    signalModifiedKey(c->db,dstkey);
+                    signalModifiedKey(c,c->db,dstkey);
+                    notifyKeyspaceEvent(NOTIFY_GENERIC,"del",dstkey,c->db->id);
                     server.dirty++;
                 }
                 addReply(c,shared.czero);
             } else {
-                addReply(c,shared.emptymultibulk);
+                addReply(c,shared.emptyset[c->resp]);
             }
             return;
         }
-        
-        // æ£€æŸ¥å¯¹è±¡çš„ç±»å‹
-        if (checkType(c,setobj,REDIS_SET)) {
+
+     // ¼ì²é¶ÔÏóµÄÀàĞÍ
+        if (checkType(c,setobj,OBJ_SET)) {
             zfree(sets);
             return;
         }
-
-        // å°†æ•°ç»„æŒ‡é’ˆæŒ‡å‘é›†åˆå¯¹è±¡
+        // ½«Êı×éÖ¸ÕëÖ¸Ïò¼¯ºÏ¶ÔÏó
         sets[j] = setobj;
     }
-
     /* Sort sets from the smallest to largest, this will improve our
      * algorithm's performance */
-    // æŒ‰åŸºæ•°å¯¹é›†åˆè¿›è¡Œæ’åºï¼Œè¿™æ ·æå‡ç®—æ³•çš„æ•ˆç‡
+    // °´»ùÊı¶Ô¼¯ºÏ½øĞĞÅÅĞò£¬ÕâÑùÌáÉıËã·¨µÄĞ§ÂÊ
     qsort(sets,setnum,sizeof(robj*),qsortCompareSetsByCardinality);
 
     /* The first thing we should output is the total number of elements...
@@ -980,11 +1153,10 @@ void sinterGenericCommand(redisClient *c, robj **setkeys, unsigned long setnum, 
      * the intersection set size, so we use a trick, append an empty object
      * to the output list and save the pointer to later modify it with the
      * right length */
-    // å› ä¸ºä¸çŸ¥é“ç»“æœé›†ä¼šæœ‰å¤šå°‘ä¸ªå…ƒç´ ï¼Œæ‰€æœ‰æ²¡æœ‰åŠæ³•ç›´æ¥è®¾ç½®å›å¤çš„æ•°é‡
-    // è¿™é‡Œä½¿ç”¨äº†ä¸€ä¸ªå°æŠ€å·§ï¼Œç›´æ¥ä½¿ç”¨ä¸€ä¸ª BUFF åˆ—è¡¨ï¼Œ
-    // ç„¶åå°†ä¹‹åçš„å›å¤éƒ½æ·»åŠ åˆ°åˆ—è¡¨ä¸­
-    if (!dstkey) {
-        replylen = addDeferredMultiBulkLength(c);
+    // ÒòÎª²»ÖªµÀ½á¹û¼¯»áÓĞ¶àÉÙ¸öÔªËØ£¬ËùÓĞÃ»ÓĞ°ì·¨Ö±½ÓÉèÖÃ»Ø¸´µÄÊıÁ¿
+    // ÕâÀïÊ¹ÓÃÁËÒ»¸öĞ¡¼¼ÇÉ£¬Ö±½ÓÊ¹ÓÃÒ»¸ö BUFF ÁĞ±í£¬
+    // È»ºó½«Ö®ºóµÄ»Ø¸´¶¼Ìí¼Óµ½ÁĞ±íÖĞ    if (!dstkey) {
+        replylen = addReplyDeferredLen(c);
     } else {
         /* If we have a target key where to store the resulting set
          * create this key with an empty set inside */
@@ -994,197 +1166,181 @@ void sinterGenericCommand(redisClient *c, robj **setkeys, unsigned long setnum, 
     /* Iterate all the elements of the first (smallest) set, and test
      * the element against all the other sets, if at least one set does
      * not include the element it is discarded */
-    // éå†åŸºæ•°æœ€å°çš„ç¬¬ä¸€ä¸ªé›†åˆ
-    // å¹¶å°†å®ƒçš„å…ƒç´ å’Œæ‰€æœ‰å…¶ä»–é›†åˆè¿›è¡Œå¯¹æ¯”
-    // å¦‚æœæœ‰è‡³å°‘ä¸€ä¸ªé›†åˆä¸åŒ…å«è¿™ä¸ªå…ƒç´ ï¼Œé‚£ä¹ˆè¿™ä¸ªå…ƒç´ ä¸å±äºäº¤é›†
+    // ±éÀú»ùÊı×îĞ¡µÄµÚÒ»¸ö¼¯ºÏ
+    // ²¢½«ËüµÄÔªËØºÍËùÓĞÆäËû¼¯ºÏ½øĞĞ¶Ô±È
+    // Èç¹ûÓĞÖÁÉÙÒ»¸ö¼¯ºÏ²»°üº¬Õâ¸öÔªËØ£¬ÄÇÃ´Õâ¸öÔªËØ²»ÊôÓÚ½»¼¯
     si = setTypeInitIterator(sets[0]);
-    while((encoding = setTypeNext(si,&eleobj,&intobj)) != -1) {
-        // éå†å…¶ä»–é›†åˆï¼Œæ£€æŸ¥å…ƒç´ æ˜¯å¦åœ¨è¿™äº›é›†åˆä¸­å­˜åœ¨
+    while((encoding = setTypeNext(si,&elesds,&intobj)) != -1) {
+        // ±éÀúÆäËû¼¯ºÏ£¬¼ì²éÔªËØÊÇ·ñÔÚÕâĞ©¼¯ºÏÖĞ´æÔÚ
         for (j = 1; j < setnum; j++) {
-
-            // è·³è¿‡ç¬¬ä¸€ä¸ªé›†åˆï¼Œå› ä¸ºå®ƒæ˜¯ç»“æœé›†çš„èµ·å§‹å€¼
+            // Ìø¹ıµÚÒ»¸ö¼¯ºÏ£¬ÒòÎªËüÊÇ½á¹û¼¯µÄÆğÊ¼Öµ
             if (sets[j] == sets[0]) continue;
 
-            // å…ƒç´ çš„ç¼–ç ä¸º INTSET 
-            // åœ¨å…¶ä»–é›†åˆä¸­æŸ¥æ‰¾è¿™ä¸ªå¯¹è±¡æ˜¯å¦å­˜åœ¨
-            if (encoding == REDIS_ENCODING_INTSET) {
+
+            // ÔªËØµÄ±àÂëÎª INTSET 
+            // ÔÚÆäËû¼¯ºÏÖĞ²éÕÒÕâ¸ö¶ÔÏóÊÇ·ñ´æÔÚ
+            if (encoding == OBJ_ENCODING_INTSET) {
                 /* intset with intset is simple... and fast */
-                if (sets[j]->encoding == REDIS_ENCODING_INTSET &&
+                if (sets[j]->encoding == OBJ_ENCODING_INTSET &&
                     !intsetFind((intset*)sets[j]->ptr,intobj))
                 {
                     break;
                 /* in order to compare an integer with an object we
                  * have to use the generic function, creating an object
                  * for this */
-                } else if (sets[j]->encoding == REDIS_ENCODING_HT) {
-                    eleobj = createStringObjectFromLongLong(intobj);
-                    if (!setTypeIsMember(sets[j],eleobj)) {
-                        decrRefCount(eleobj);
+                } else if (sets[j]->encoding == OBJ_ENCODING_HT) {
+                    elesds = sdsfromlonglong(intobj);
+                    if (!setTypeIsMember(sets[j],elesds)) {
+                        sdsfree(elesds);
                         break;
                     }
-                    decrRefCount(eleobj);
+                    sdsfree(elesds);
                 }
 
-            // å…ƒç´ çš„ç¼–ç ä¸º å­—å…¸
-            // åœ¨å…¶ä»–é›†åˆä¸­æŸ¥æ‰¾è¿™ä¸ªå¯¹è±¡æ˜¯å¦å­˜åœ¨
-            } else if (encoding == REDIS_ENCODING_HT) {
-                /* Optimization... if the source object is integer
-                 * encoded AND the target set is an intset, we can get
-                 * a much faster path. */
-                if (eleobj->encoding == REDIS_ENCODING_INT &&
-                    sets[j]->encoding == REDIS_ENCODING_INTSET &&
-                    !intsetFind((intset*)sets[j]->ptr,(long)eleobj->ptr))
-                {
-                    break;
-                /* else... object to object check is easy as we use the
-                 * type agnostic API here. */
-                } else if (!setTypeIsMember(sets[j],eleobj)) {
+
+            // ÔªËØµÄ±àÂëÎª ×Öµä
+            // ÔÚÆäËû¼¯ºÏÖĞ²éÕÒÕâ¸ö¶ÔÏóÊÇ·ñ´æÔÚ
+            } else if (encoding == OBJ_ENCODING_HT) {
+                if (!setTypeIsMember(sets[j],elesds)) {
                     break;
                 }
             }
         }
 
         /* Only take action when all sets contain the member */
-        // å¦‚æœæ‰€æœ‰é›†åˆéƒ½å¸¦æœ‰ç›®æ ‡å…ƒç´ çš„è¯ï¼Œé‚£ä¹ˆæ‰§è¡Œä»¥ä¸‹ä»£ç 
+        // Èç¹ûËùÓĞ¼¯ºÏ¶¼´øÓĞÄ¿±êÔªËØµÄ»°£¬ÄÇÃ´Ö´ĞĞÒÔÏÂ´úÂë
         if (j == setnum) {
-
-            // SINTER å‘½ä»¤ï¼Œç›´æ¥è¿”å›ç»“æœé›†å…ƒç´ 
+           // SINTER ÃüÁî£¬Ö±½Ó·µ»Ø½á¹û¼¯ÔªËØ
             if (!dstkey) {
-                if (encoding == REDIS_ENCODING_HT)
-                    addReplyBulk(c,eleobj);
+                if (encoding == OBJ_ENCODING_HT)
+                    addReplyBulkCBuffer(c,elesds,sdslen(elesds));
                 else
                     addReplyBulkLongLong(c,intobj);
                 cardinality++;
-
-            // SINTERSTORE å‘½ä»¤ï¼Œå°†ç»“æœæ·»åŠ åˆ°ç»“æœé›†ä¸­
+            // SINTERSTORE ÃüÁî£¬½«½á¹ûÌí¼Óµ½½á¹û¼¯ÖĞ
             } else {
-                if (encoding == REDIS_ENCODING_INTSET) {
-                    eleobj = createStringObjectFromLongLong(intobj);
-                    setTypeAdd(dstset,eleobj);
-                    decrRefCount(eleobj);
+                if (encoding == OBJ_ENCODING_INTSET) {
+                    elesds = sdsfromlonglong(intobj);
+                    setTypeAdd(dstset,elesds);
+                    sdsfree(elesds);
                 } else {
-                    setTypeAdd(dstset,eleobj);
+                    setTypeAdd(dstset,elesds);
                 }
             }
         }
     }
     setTypeReleaseIterator(si);
 
-    // SINTERSTORE å‘½ä»¤ï¼Œå°†ç»“æœé›†å…³è”åˆ°æ•°æ®åº“
+    // SINTERSTORE ÃüÁî£¬½«½á¹û¼¯¹ØÁªµ½Êı¾İ¿â
     if (dstkey) {
         /* Store the resulting set into the target, if the intersection
          * is not an empty set. */
-        // åˆ é™¤ç°åœ¨å¯èƒ½æœ‰çš„ dstkey
-        int deleted = dbDelete(c->db,dstkey);
-
-        // å¦‚æœç»“æœé›†éç©ºï¼Œé‚£ä¹ˆå°†å®ƒå…³è”åˆ°æ•°æ®åº“ä¸­
+        // Èç¹û½á¹û¼¯·Ç¿Õ£¬ÄÇÃ´½«Ëü¹ØÁªµ½Êı¾İ¿âÖĞ
         if (setTypeSize(dstset) > 0) {
-            dbAdd(c->db,dstkey,dstset);
+            setKey(c,c->db,dstkey,dstset);
             addReplyLongLong(c,setTypeSize(dstset));
-            notifyKeyspaceEvent(REDIS_NOTIFY_SET,"sinterstore",
+            notifyKeyspaceEvent(NOTIFY_SET,"sinterstore",
                 dstkey,c->db->id);
+            server.dirty++;
         } else {
-            decrRefCount(dstset);
             addReply(c,shared.czero);
-            if (deleted)
-                notifyKeyspaceEvent(REDIS_NOTIFY_GENERIC,"del",
-                    dstkey,c->db->id);
+            if (dbDelete(c->db,dstkey)) {
+                server.dirty++;
+                signalModifiedKey(c,c->db,dstkey);
+                notifyKeyspaceEvent(NOTIFY_GENERIC,"del",dstkey,c->db->id);
+            }
         }
-
-        signalModifiedKey(c->db,dstkey);
-
-        server.dirty++;
-
-    // SINTER å‘½ä»¤ï¼Œå›å¤ç»“æœé›†çš„åŸºæ•°
+        decrRefCount(dstset);
+    // SINTER ÃüÁî£¬»Ø¸´½á¹û¼¯µÄ»ùÊı
     } else {
-        setDeferredMultiBulkLength(c,replylen,cardinality);
+        setDeferredSetLen(c,replylen,cardinality);
     }
-
     zfree(sets);
 }
 
-void sinterCommand(redisClient *c) {
+void sinterCommand(client *c) {
     sinterGenericCommand(c,c->argv+1,c->argc-1,NULL);
 }
 
-void sinterstoreCommand(redisClient *c) {
+void sinterstoreCommand(client *c) {
     sinterGenericCommand(c,c->argv+2,c->argc-2,c->argv[1]);
 }
 
+
+
 /*
- * å‘½ä»¤çš„ç±»å‹
+ * ÃüÁîµÄÀàĞÍ
  */
-#define REDIS_OP_UNION 0
-#define REDIS_OP_DIFF 1
-#define REDIS_OP_INTER 2
+#define SET_OP_UNION 0
+#define SET_OP_DIFF 1
+#define SET_OP_INTER 2
 
-void sunionDiffGenericCommand(redisClient *c, robj **setkeys, int setnum, robj *dstkey, int op) {
-
-    // é›†åˆæ•°ç»„
+void sunionDiffGenericCommand(client *c, robj **setkeys, int setnum,
+                              robj *dstkey, int op) {
+    // ¼¯ºÏÊı×é
     robj **sets = zmalloc(sizeof(robj*)*setnum);
-
     setTypeIterator *si;
-    robj *ele, *dstset = NULL;
+    robj *dstset = NULL;
+    sds ele;
     int j, cardinality = 0;
     int diff_algo = 1;
 
-    // å–å‡ºæ‰€æœ‰é›†åˆå¯¹è±¡ï¼Œå¹¶æ·»åŠ åˆ°é›†åˆæ•°ç»„ä¸­
+    // È¡³öËùÓĞ¼¯ºÏ¶ÔÏó£¬²¢Ìí¼Óµ½¼¯ºÏÊı×éÖĞ
     for (j = 0; j < setnum; j++) {
         robj *setobj = dstkey ?
             lookupKeyWrite(c->db,setkeys[j]) :
             lookupKeyRead(c->db,setkeys[j]);
-
-        // ä¸å­˜åœ¨çš„é›†åˆå½“ä½œ NULL æ¥å¤„ç†
+        // ²»´æÔÚµÄ¼¯ºÏµ±×÷ NULL À´´¦Àí
         if (!setobj) {
             sets[j] = NULL;
             continue;
         }
 
-        // æœ‰å¯¹è±¡ä¸æ˜¯é›†åˆï¼Œåœæ­¢æ‰§è¡Œï¼Œè¿›è¡Œæ¸…ç†
-        if (checkType(c,setobj,REDIS_SET)) {
+
+        // ÓĞ¶ÔÏó²»ÊÇ¼¯ºÏ£¬Í£Ö¹Ö´ĞĞ£¬½øĞĞÇåÀí
+        if (checkType(c,setobj,OBJ_SET)) {
             zfree(sets);
             return;
         }
-
-        // è®°å½•å¯¹è±¡
+        // ¼ÇÂ¼¶ÔÏó
         sets[j] = setobj;
     }
 
     /* Select what DIFF algorithm to use.
      *
-     * é€‰æ‹©ä½¿ç”¨é‚£ä¸ªç®—æ³•æ¥æ‰§è¡Œè®¡ç®—
+     * Ñ¡ÔñÊ¹ÓÃÄÇ¸öËã·¨À´Ö´ĞĞ¼ÆËã
      *
      * Algorithm 1 is O(N*M) where N is the size of the element first set
      * and M the total number of sets.
      *
-     * ç®—æ³• 1 çš„å¤æ‚åº¦ä¸º O(N*M) ï¼Œå…¶ä¸­ N ä¸ºç¬¬ä¸€ä¸ªé›†åˆçš„åŸºæ•°ï¼Œ
-     * è€Œ M åˆ™ä¸ºå…¶ä»–é›†åˆçš„æ•°é‡ã€‚
+     * Ëã·¨ 1 µÄ¸´ÔÓ¶ÈÎª O(N*M) £¬ÆäÖĞ N ÎªµÚÒ»¸ö¼¯ºÏµÄ»ùÊı£¬
+     * ¶ø M ÔòÎªÆäËû¼¯ºÏµÄÊıÁ¿¡£
      *
      * Algorithm 2 is O(N) where N is the total number of elements in all
      * the sets.
      *
-     * ç®—æ³• 2 çš„å¤æ‚åº¦ä¸º O(N) ï¼Œå…¶ä¸­ N ä¸ºæ‰€æœ‰é›†åˆä¸­çš„å…ƒç´ æ•°é‡æ€»æ•°ã€‚
+     * Ëã·¨ 2 µÄ¸´ÔÓ¶ÈÎª O(N) £¬ÆäÖĞ N ÎªËùÓĞ¼¯ºÏÖĞµÄÔªËØÊıÁ¿×ÜÊı¡£
      *
      * We compute what is the best bet with the current input here. 
      *
-     * ç¨‹åºé€šè¿‡è€ƒå¯Ÿè¾“å…¥æ¥å†³å®šä½¿ç”¨é‚£ä¸ªç®—æ³•
+     * ³ÌĞòÍ¨¹ı¿¼²ìÊäÈëÀ´¾ö¶¨Ê¹ÓÃÄÇ¸öËã·¨
      */
-    if (op == REDIS_OP_DIFF && sets[0]) {
+    if (op == SET_OP_DIFF && sets[0]) {
         long long algo_one_work = 0, algo_two_work = 0;
 
-        // éå†æ‰€æœ‰é›†åˆ
+        // ±éÀúËùÓĞ¼¯ºÏ
         for (j = 0; j < setnum; j++) {
             if (sets[j] == NULL) continue;
 
-            // è®¡ç®— setnum ä¹˜ä»¥ sets[0] çš„åŸºæ•°ä¹‹ç§¯
+            // ¼ÆËã setnum ³ËÒÔ sets[0] µÄ»ùÊıÖ®»ı
             algo_one_work += setTypeSize(sets[0]);
-            // è®¡ç®—æ‰€æœ‰é›†åˆçš„åŸºæ•°ä¹‹å’Œ
+            // ¼ÆËãËùÓĞ¼¯ºÏµÄ»ùÊıÖ®ºÍ
             algo_two_work += setTypeSize(sets[j]);
         }
 
         /* Algorithm 1 has better constant times and performs less operations
          * if there are elements in common. Give it some advantage. */
-        // ç®—æ³• 1 çš„å¸¸æ•°æ¯”è¾ƒä½ï¼Œä¼˜å…ˆè€ƒè™‘ç®—æ³• 1
+        // Ëã·¨ 1 µÄ³£Êı±È½ÏµÍ£¬ÓÅÏÈ¿¼ÂÇËã·¨ 1
         algo_one_work /= 2;
         diff_algo = (algo_one_work <= algo_two_work) ? 1 : 2;
 
@@ -1192,8 +1348,8 @@ void sunionDiffGenericCommand(redisClient *c, robj **setkeys, int setnum, robj *
             /* With algorithm 1 it is better to order the sets to subtract
              * by decreasing size, so that we are more likely to find
              * duplicated elements ASAP. */
-            // å¦‚æœä½¿ç”¨çš„æ˜¯ç®—æ³• 1 ï¼Œé‚£ä¹ˆæœ€å¥½å¯¹ sets[0] ä»¥å¤–çš„å…¶ä»–é›†åˆè¿›è¡Œæ’åº
-            // è¿™æ ·æœ‰åŠ©äºä¼˜åŒ–ç®—æ³•çš„æ€§èƒ½
+            // Èç¹ûÊ¹ÓÃµÄÊÇËã·¨ 1 £¬ÄÇÃ´×îºÃ¶Ô sets[0] ÒÔÍâµÄÆäËû¼¯ºÏ½øĞĞÅÅĞò
+            // ÕâÑùÓĞÖúÓÚÓÅ»¯Ëã·¨µÄĞÔÄÜ
             qsort(sets+1,setnum-1,sizeof(robj*),
                 qsortCompareSetsByRevCardinality);
         }
@@ -1203,99 +1359,95 @@ void sunionDiffGenericCommand(redisClient *c, robj **setkeys, int setnum, robj *
      * is not NULL (that is, we are inside an SUNIONSTORE operation) then
      * this set object will be the resulting object to set into the target key
      *
-     * ä½¿ç”¨ä¸€ä¸ªä¸´æ—¶é›†åˆæ¥ä¿å­˜ç»“æœé›†ï¼Œå¦‚æœç¨‹åºæ‰§è¡Œçš„æ˜¯ SUNIONSTORE å‘½ä»¤ï¼Œ
-     * é‚£ä¹ˆè¿™ä¸ªç»“æœå°†ä¼šæˆä¸ºå°†æ¥çš„é›†åˆå€¼å¯¹è±¡ã€‚
+     * Ê¹ÓÃÒ»¸öÁÙÊ±¼¯ºÏÀ´±£´æ½á¹û¼¯£¬Èç¹û³ÌĞòÖ´ĞĞµÄÊÇ SUNIONSTORE ÃüÁî£¬
+     * ÄÇÃ´Õâ¸ö½á¹û½«»á³ÉÎª½«À´µÄ¼¯ºÏÖµ¶ÔÏó¡£
      */
     dstset = createIntsetObject();
 
-    // æ‰§è¡Œçš„æ˜¯å¹¶é›†è®¡ç®—
-    if (op == REDIS_OP_UNION) {
+    // Ö´ĞĞµÄÊÇ²¢¼¯¼ÆËã
+    if (op == SET_OP_UNION) {
         /* Union is trivial, just add every element of every set to the
          * temporary set. */
-        // éå†æ‰€æœ‰é›†åˆï¼Œå°†å…ƒç´ æ·»åŠ åˆ°ç»“æœé›†é‡Œå°±å¯ä»¥äº†
+        // ±éÀúËùÓĞ¼¯ºÏ£¬½«ÔªËØÌí¼Óµ½½á¹û¼¯Àï¾Í¿ÉÒÔÁË
         for (j = 0; j < setnum; j++) {
             if (!sets[j]) continue; /* non existing keys are like empty sets */
 
             si = setTypeInitIterator(sets[j]);
             while((ele = setTypeNextObject(si)) != NULL) {
-                // setTypeAdd åªåœ¨é›†åˆä¸å­˜åœ¨æ—¶ï¼Œæ‰ä¼šå°†å…ƒç´ æ·»åŠ åˆ°é›†åˆï¼Œå¹¶è¿”å› 1 
+                // setTypeAdd Ö»ÔÚ¼¯ºÏ²»´æÔÚÊ±£¬²Å»á½«ÔªËØÌí¼Óµ½¼¯ºÏ£¬²¢·µ»Ø 1 
                 if (setTypeAdd(dstset,ele)) cardinality++;
-                decrRefCount(ele);
+                sdsfree(ele);
             }
             setTypeReleaseIterator(si);
         }
 
-    // æ‰§è¡Œçš„æ˜¯å·®é›†è®¡ç®—ï¼Œå¹¶ä¸”ä½¿ç”¨ç®—æ³• 1
-    } else if (op == REDIS_OP_DIFF && sets[0] && diff_algo == 1) {
+
+    // Ö´ĞĞµÄÊÇ²î¼¯¼ÆËã£¬²¢ÇÒÊ¹ÓÃËã·¨ 1
+    } else if (op == SET_OP_DIFF && sets[0] && diff_algo == 1) {
         /* DIFF Algorithm 1:
          *
-         * å·®é›†ç®—æ³• 1 ï¼š
+         * ²î¼¯Ëã·¨ 1 £º
          *
          * We perform the diff by iterating all the elements of the first set,
          * and only adding it to the target set if the element does not exist
          * into all the other sets.
          *
-         * ç¨‹åºéå† sets[0] é›†åˆä¸­çš„æ‰€æœ‰å…ƒç´ ï¼Œ
-         * å¹¶å°†è¿™ä¸ªå…ƒç´ å’Œå…¶ä»–é›†åˆçš„æ‰€æœ‰å…ƒç´ è¿›è¡Œå¯¹æ¯”ï¼Œ
-         * åªæœ‰è¿™ä¸ªå…ƒç´ ä¸å­˜åœ¨äºå…¶ä»–æ‰€æœ‰é›†åˆæ—¶ï¼Œ
-         * æ‰å°†è¿™ä¸ªå…ƒç´ æ·»åŠ åˆ°ç»“æœé›†ã€‚
+         * ³ÌĞò±éÀú sets[0] ¼¯ºÏÖĞµÄËùÓĞÔªËØ£¬
+         * ²¢½«Õâ¸öÔªËØºÍÆäËû¼¯ºÏµÄËùÓĞÔªËØ½øĞĞ¶Ô±È£¬
+         * Ö»ÓĞÕâ¸öÔªËØ²»´æÔÚÓÚÆäËûËùÓĞ¼¯ºÏÊ±£¬
+         * ²Å½«Õâ¸öÔªËØÌí¼Óµ½½á¹û¼¯¡£
          *
          * This way we perform at max N*M operations, where N is the size of
-         * the first set, and M the number of sets. 
-         *
-         * è¿™ä¸ªç®—æ³•æ‰§è¡Œæœ€å¤š N*M æ­¥ï¼Œ N æ˜¯ç¬¬ä¸€ä¸ªé›†åˆçš„åŸºæ•°ï¼Œ
-         * è€Œ M æ˜¯å…¶ä»–é›†åˆçš„æ•°é‡ã€‚
+         * the first set, and M the number of sets. */
+         * Õâ¸öËã·¨Ö´ĞĞ×î¶à N*M ²½£¬ N ÊÇµÚÒ»¸ö¼¯ºÏµÄ»ùÊı£¬
+         * ¶ø M ÊÇÆäËû¼¯ºÏµÄÊıÁ¿¡£
          */
         si = setTypeInitIterator(sets[0]);
         while((ele = setTypeNextObject(si)) != NULL) {
-
-            // æ£€æŸ¥å…ƒç´ åœ¨å…¶ä»–é›†åˆæ˜¯å¦å­˜åœ¨
+            // ¼ì²éÔªËØÔÚÆäËû¼¯ºÏÊÇ·ñ´æÔÚ
             for (j = 1; j < setnum; j++) {
                 if (!sets[j]) continue; /* no key is an empty set. */
                 if (sets[j] == sets[0]) break; /* same set! */
                 if (setTypeIsMember(sets[j],ele)) break;
             }
-
-            // åªæœ‰å…ƒç´ åœ¨æ‰€æœ‰å…¶ä»–é›†åˆä¸­éƒ½ä¸å­˜åœ¨æ—¶ï¼Œæ‰å°†å®ƒæ·»åŠ åˆ°ç»“æœé›†ä¸­
+            // Ö»ÓĞÔªËØÔÚËùÓĞÆäËû¼¯ºÏÖĞ¶¼²»´æÔÚÊ±£¬²Å½«ËüÌí¼Óµ½½á¹û¼¯ÖĞ
             if (j == setnum) {
                 /* There is no other set with this element. Add it. */
                 setTypeAdd(dstset,ele);
                 cardinality++;
             }
-
-            decrRefCount(ele);
+            sdsfree(ele);
         }
         setTypeReleaseIterator(si);
 
-    // æ‰§è¡Œçš„æ˜¯å·®é›†è®¡ç®—ï¼Œå¹¶ä¸”ä½¿ç”¨ç®—æ³• 2
-    } else if (op == REDIS_OP_DIFF && sets[0] && diff_algo == 2) {
+
+    // Ö´ĞĞµÄÊÇ²î¼¯¼ÆËã£¬²¢ÇÒÊ¹ÓÃËã·¨ 2
+    } else if (op == SET_OP_DIFF && sets[0] && diff_algo == 2) {
         /* DIFF Algorithm 2:
          *
-         * å·®é›†ç®—æ³• 2 ï¼š
-         *
+         * ²î¼¯Ëã·¨ 2 £º
          * Add all the elements of the first set to the auxiliary set.
          * Then remove all the elements of all the next sets from it.
          *
-         * å°† sets[0] çš„æ‰€æœ‰å…ƒç´ éƒ½æ·»åŠ åˆ°ç»“æœé›†ä¸­ï¼Œ
-         * ç„¶åéå†å…¶ä»–æ‰€æœ‰é›†åˆï¼Œå°†ç›¸åŒçš„å…ƒç´ ä»ç»“æœé›†ä¸­åˆ é™¤ã€‚
+         * ½« sets[0] µÄËùÓĞÔªËØ¶¼Ìí¼Óµ½½á¹û¼¯ÖĞ£¬
+         * È»ºó±éÀúÆäËûËùÓĞ¼¯ºÏ£¬½«ÏàÍ¬µÄÔªËØ´Ó½á¹û¼¯ÖĞÉ¾³ı¡£
          *
          * This is O(N) where N is the sum of all the elements in every set. 
          *
-         * ç®—æ³•å¤æ‚åº¦ä¸º O(N) ï¼ŒN ä¸ºæ‰€æœ‰é›†åˆçš„åŸºæ•°ä¹‹å’Œã€‚
-         */
+         * Ëã·¨¸´ÔÓ¶ÈÎª O(N) £¬N ÎªËùÓĞ¼¯ºÏµÄ»ùÊıÖ®ºÍ¡£
         for (j = 0; j < setnum; j++) {
             if (!sets[j]) continue; /* non existing keys are like empty sets */
 
             si = setTypeInitIterator(sets[j]);
             while((ele = setTypeNextObject(si)) != NULL) {
-                // sets[0] æ—¶ï¼Œå°†æ‰€æœ‰å…ƒç´ æ·»åŠ åˆ°é›†åˆ
+                // sets[0] Ê±£¬½«ËùÓĞÔªËØÌí¼Óµ½¼¯ºÏ
                 if (j == 0) {
                     if (setTypeAdd(dstset,ele)) cardinality++;
-                // ä¸æ˜¯ sets[0] æ—¶ï¼Œå°†æ‰€æœ‰é›†åˆä»ç»“æœé›†ä¸­ç§»é™¤
+                // ²»ÊÇ sets[0] Ê±£¬½«ËùÓĞ¼¯ºÏ´Ó½á¹û¼¯ÖĞÒÆ³ı
                 } else {
                     if (setTypeRemove(dstset,ele)) cardinality--;
                 }
-                decrRefCount(ele);
+                sdsfree(ele);
             }
             setTypeReleaseIterator(si);
 
@@ -1306,77 +1458,70 @@ void sunionDiffGenericCommand(redisClient *c, robj **setkeys, int setnum, robj *
     }
 
     /* Output the content of the resulting set, if not in STORE mode */
-    // æ‰§è¡Œçš„æ˜¯ SDIFF æˆ–è€… SUNION
-    // æ‰“å°ç»“æœé›†ä¸­çš„æ‰€æœ‰å…ƒç´ 
+    // Ö´ĞĞµÄÊÇ SDIFF »òÕß SUNION
+    // ´òÓ¡½á¹û¼¯ÖĞµÄËùÓĞÔªËØ
     if (!dstkey) {
-        addReplyMultiBulkLen(c,cardinality);
-
-        // éå†å¹¶å›å¤ç»“æœé›†ä¸­çš„å…ƒç´ 
+        addReplySetLen(c,cardinality);
+        // ±éÀú²¢»Ø¸´½á¹û¼¯ÖĞµÄÔªËØ
         si = setTypeInitIterator(dstset);
         while((ele = setTypeNextObject(si)) != NULL) {
-            addReplyBulk(c,ele);
-            decrRefCount(ele);
+            addReplyBulkCBuffer(c,ele,sdslen(ele));
+            sdsfree(ele);
         }
         setTypeReleaseIterator(si);
-
-        decrRefCount(dstset);
-
-    // æ‰§è¡Œçš„æ˜¯ SDIFFSTORE æˆ–è€… SUNIONSTORE
+        server.lazyfree_lazy_server_del ? freeObjAsync(NULL, dstset) :
+                                          decrRefCount(dstset);
+    // Ö´ĞĞµÄÊÇ SDIFFSTORE »òÕß SUNIONSTORE
     } else {
         /* If we have a target key where to store the resulting set
          * create this key with the result set inside */
-        // ç°åˆ é™¤ç°åœ¨å¯èƒ½æœ‰çš„ dstkey
-        int deleted = dbDelete(c->db,dstkey);
-
-        // å¦‚æœç»“æœé›†ä¸ä¸ºç©ºï¼Œå°†å®ƒå…³è”åˆ°æ•°æ®åº“ä¸­
+        // Èç¹û½á¹û¼¯²»Îª¿Õ£¬½«Ëü¹ØÁªµ½Êı¾İ¿âÖĞ
         if (setTypeSize(dstset) > 0) {
-            dbAdd(c->db,dstkey,dstset);
-            // è¿”å›ç»“æœé›†çš„åŸºæ•°
+            setKey(c,c->db,dstkey,dstset);
+            // ·µ»Ø½á¹û¼¯µÄ»ùÊı
             addReplyLongLong(c,setTypeSize(dstset));
-            notifyKeyspaceEvent(REDIS_NOTIFY_SET,
-                op == REDIS_OP_UNION ? "sunionstore" : "sdiffstore",
+            notifyKeyspaceEvent(NOTIFY_SET,
+                op == SET_OP_UNION ? "sunionstore" : "sdiffstore",
                 dstkey,c->db->id);
+            server.dirty++;
 
-        // ç»“æœé›†ä¸ºç©º
+
+        // ½á¹û¼¯Îª¿Õ
         } else {
-            decrRefCount(dstset);
-            // è¿”å› 0 
             addReply(c,shared.czero);
-            if (deleted)
-                notifyKeyspaceEvent(REDIS_NOTIFY_GENERIC,"del",
-                    dstkey,c->db->id);
+            if (dbDelete(c->db,dstkey)) {
+                server.dirty++;
+                signalModifiedKey(c,c->db,dstkey);
+                notifyKeyspaceEvent(NOTIFY_GENERIC,"del",dstkey,c->db->id);
+            }
         }
-
-        signalModifiedKey(c->db,dstkey);
-
-        server.dirty++;
+        decrRefCount(dstset);
     }
-
     zfree(sets);
 }
 
-void sunionCommand(redisClient *c) {
-    sunionDiffGenericCommand(c,c->argv+1,c->argc-1,NULL,REDIS_OP_UNION);
+void sunionCommand(client *c) {
+    sunionDiffGenericCommand(c,c->argv+1,c->argc-1,NULL,SET_OP_UNION);
 }
 
-void sunionstoreCommand(redisClient *c) {
-    sunionDiffGenericCommand(c,c->argv+2,c->argc-2,c->argv[1],REDIS_OP_UNION);
+void sunionstoreCommand(client *c) {
+    sunionDiffGenericCommand(c,c->argv+2,c->argc-2,c->argv[1],SET_OP_UNION);
 }
 
-void sdiffCommand(redisClient *c) {
-    sunionDiffGenericCommand(c,c->argv+1,c->argc-1,NULL,REDIS_OP_DIFF);
+void sdiffCommand(client *c) {
+    sunionDiffGenericCommand(c,c->argv+1,c->argc-1,NULL,SET_OP_DIFF);
 }
 
-void sdiffstoreCommand(redisClient *c) {
-    sunionDiffGenericCommand(c,c->argv+2,c->argc-2,c->argv[1],REDIS_OP_DIFF);
+void sdiffstoreCommand(client *c) {
+    sunionDiffGenericCommand(c,c->argv+2,c->argc-2,c->argv[1],SET_OP_DIFF);
 }
 
-void sscanCommand(redisClient *c) {
+void sscanCommand(client *c) {
     robj *set;
     unsigned long cursor;
 
-    if (parseScanCursorOrReply(c,c->argv[2],&cursor) == REDIS_ERR) return;
+    if (parseScanCursorOrReply(c,c->argv[2],&cursor) == C_ERR) return;
     if ((set = lookupKeyReadOrReply(c,c->argv[1],shared.emptyscan)) == NULL ||
-        checkType(c,set,REDIS_SET)) return;
+        checkType(c,set,OBJ_SET)) return;
     scanGenericCommand(c,set,cursor);
 }

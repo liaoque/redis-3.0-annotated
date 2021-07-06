@@ -1,154 +1,228 @@
 /* The ziplist is a specially encoded dually linked list that is designed
  * to be very memory efficient. 
  *
- * Ziplist æ˜¯ä¸ºäº†å°½å¯èƒ½åœ°èŠ‚çº¦å†…å­˜è€Œè®¾è®¡çš„ç‰¹æ®Šç¼–ç åŒç«¯é“¾è¡¨ã€‚
+ * Ziplist ÊÇÎªÁË¾¡¿ÉÄÜµØ½ÚÔ¼ÄÚ´æ¶øÉè¼ÆµÄÌØÊâ±àÂëË«¶ËÁ´±í¡£
  *
  * It stores both strings and integer values,
  * where integers are encoded as actual integers instead of a series of
  * characters. 
  *
- * Ziplist å¯ä»¥å‚¨å­˜å­—ç¬¦ä¸²å€¼å’Œæ•´æ•°å€¼ï¼Œ
- * å…¶ä¸­ï¼Œæ•´æ•°å€¼è¢«ä¿å­˜ä¸ºå®é™…çš„æ•´æ•°ï¼Œè€Œä¸æ˜¯å­—ç¬¦æ•°ç»„ã€‚
+ * Ziplist ¿ÉÒÔ´¢´æ×Ö·û´®ÖµºÍÕûÊıÖµ£¬
+ * ÆäÖĞ£¬ÕûÊıÖµ±»±£´æÎªÊµ¼ÊµÄÕûÊı£¬¶ø²»ÊÇ×Ö·ûÊı×é¡£
  *
  * It allows push and pop operations on either side of the list
  * in O(1) time. However, because every operation requires a reallocation of
  * the memory used by the ziplist, the actual complexity is related to the
  * amount of memory used by the ziplist.
  *
- * Ziplist å…è®¸åœ¨åˆ—è¡¨çš„ä¸¤ç«¯è¿›è¡Œ O(1) å¤æ‚åº¦çš„ push å’Œ pop æ“ä½œã€‚
- * ä½†æ˜¯ï¼Œå› ä¸ºè¿™äº›æ“ä½œéƒ½éœ€è¦å¯¹æ•´ä¸ª ziplist è¿›è¡Œå†…å­˜é‡åˆ†é…ï¼Œ
- * æ‰€ä»¥å®é™…çš„å¤æ‚åº¦å’Œ ziplist å ç”¨çš„å†…å­˜å¤§å°æœ‰å…³ã€‚
+ * Ziplist ÔÊĞíÔÚÁĞ±íµÄÁ½¶Ë½øĞĞ O(1) ¸´ÔÓ¶ÈµÄ push ºÍ pop ²Ù×÷¡£
+ * µ«ÊÇ£¬ÒòÎªÕâĞ©²Ù×÷¶¼ĞèÒª¶ÔÕû¸ö ziplist ½øĞĞÄÚ´æÖØ·ÖÅä£¬
+ * ËùÒÔÊµ¼ÊµÄ¸´ÔÓ¶ÈºÍ ziplist Õ¼ÓÃµÄÄÚ´æ´óĞ¡ÓĞ¹Ø¡£
  *
  * ----------------------------------------------------------------------------
  *
- * ZIPLIST OVERALL LAYOUT:
- * Ziplist çš„æ•´ä½“å¸ƒå±€ï¼š
+ * ZIPLIST OVERALL LAYOUT
+ * Ziplist µÄÕûÌå²¼¾Ö£º
  *
  * The general layout of the ziplist is as follows:
- * ä»¥ä¸‹æ˜¯ ziplist çš„ä¸€èˆ¬å¸ƒå±€ï¼š
+ * ÒÔÏÂÊÇ ziplist µÄÒ»°ã²¼¾Ö£º
  *
- * <zlbytes><zltail><zllen><entry><entry><zlend>
+ * <zlbytes> <zltail> <zllen> <entry> <entry> ... <entry> <zlend>
  *
- * <zlbytes> is an unsigned integer to hold the number of bytes that the
- * ziplist occupies. This value needs to be stored to be able to resize the
- * entire structure without the need to traverse it first.
+ * NOTE: all fields are stored in little endian, if not specified otherwise.
  *
- * <zlbytes> æ˜¯ä¸€ä¸ªæ— ç¬¦å·æ•´æ•°ï¼Œä¿å­˜ç€ ziplist ä½¿ç”¨çš„å†…å­˜æ•°é‡ã€‚
+ * <uint32_t zlbytes> is an unsigned integer to hold the number of bytes that
+ * the ziplist occupies, including the four bytes of the zlbytes field itself.
+ * This value needs to be stored to be able to resize the entire structure
+ * without the need to traverse it first.
+ * <uint32_t zlbytes> ÊÇÒ»¸öÎŞ·ûºÅÕûÊı£¬±£´æ×Å ziplist Ê¹ÓÃµÄÄÚ´æÊıÁ¿¡£
  *
- * é€šè¿‡è¿™ä¸ªå€¼ï¼Œç¨‹åºå¯ä»¥ç›´æ¥å¯¹ ziplist çš„å†…å­˜å¤§å°è¿›è¡Œè°ƒæ•´ï¼Œ
- * è€Œæ— é¡»ä¸ºäº†è®¡ç®— ziplist çš„å†…å­˜å¤§å°è€Œéå†æ•´ä¸ªåˆ—è¡¨ã€‚
+ * Í¨¹ıÕâ¸öÖµ£¬³ÌĞò¿ÉÒÔÖ±½Ó¶Ô ziplist µÄÄÚ´æ´óĞ¡½øĞĞµ÷Õû£¬
+ * ¶øÎŞĞëÎªÁË¼ÆËã ziplist µÄÄÚ´æ´óĞ¡¶ø±éÀúÕû¸öÁĞ±í¡£
+ * <uint32_t zltail> is the offset to the last entry in the list. This allows
+ * a pop operation on the far side of the list without the need for full
+ * traversal.
  *
- * <zltail> is the offset to the last entry in the list. This allows a pop
- * operation on the far side of the list without the need for full traversal.
  *
- * <zltail> ä¿å­˜ç€åˆ°è¾¾åˆ—è¡¨ä¸­æœ€åä¸€ä¸ªèŠ‚ç‚¹çš„åç§»é‡ã€‚
+ * <zltail> ±£´æ×Åµ½´ïÁĞ±íÖĞ×îºóÒ»¸ö½ÚµãµÄÆ«ÒÆÁ¿¡£
  *
- * è¿™ä¸ªåç§»é‡ä½¿å¾—å¯¹è¡¨å°¾çš„ pop æ“ä½œå¯ä»¥åœ¨æ— é¡»éå†æ•´ä¸ªåˆ—è¡¨çš„æƒ…å†µä¸‹è¿›è¡Œã€‚
- *
- * <zllen> is the number of entries.When this value is larger than 2**16-2,
- * we need to traverse the entire list to know how many items it holds.
- *
- * <zllen> ä¿å­˜ç€åˆ—è¡¨ä¸­çš„èŠ‚ç‚¹æ•°é‡ã€‚
+ * Õâ¸öÆ«ÒÆÁ¿Ê¹µÃ¶Ô±íÎ²µÄ pop ²Ù×÷¿ÉÒÔÔÚÎŞĞë±éÀúÕû¸öÁĞ±íµÄÇé¿öÏÂ½øĞĞ
+ * <uint16_t zllen> is the number of entries. When there are more than
+ * 2^16-2 entries, this value is set to 2^16-1 and we need to traverse the
+ * entire list to know how many items it holds.
+ * <zllen> ±£´æ×ÅÁĞ±íÖĞµÄ½ÚµãÊıÁ¿¡£
  * 
- * å½“ zllen ä¿å­˜çš„å€¼å¤§äº 2**16-2 æ—¶ï¼Œ
- * ç¨‹åºéœ€è¦éå†æ•´ä¸ªåˆ—è¡¨æ‰èƒ½çŸ¥é“åˆ—è¡¨å®é™…åŒ…å«äº†å¤šå°‘ä¸ªèŠ‚ç‚¹ã€‚
+ * µ± zllen ±£´æµÄÖµ´óÓÚ 2**16-2 Ê±£¬
+ * ³ÌĞòĞèÒª±éÀúÕû¸öÁĞ±í²ÅÄÜÖªµÀÁĞ±íÊµ¼Ê°üº¬ÁË¶àÉÙ¸ö½Úµã¡£
  *
- * <zlend> is a single byte special value, equal to 255, which indicates the
- * end of the list.
+ * <uint8_t zlend> is a special entry representing the end of the ziplist.
+ * Is encoded as a single byte equal to 255. No other normal entry starts
+ * with a byte set to the value of 255.
  *
- * <zlend> çš„é•¿åº¦ä¸º 1 å­—èŠ‚ï¼Œå€¼ä¸º 255 ï¼Œæ ‡è¯†åˆ—è¡¨çš„æœ«å°¾ã€‚
+ * <zlend> µÄ³¤¶ÈÎª 1 ×Ö½Ú£¬ÖµÎª 255 £¬±êÊ¶ÁĞ±íµÄÄ©Î²¡£
  *
  * ZIPLIST ENTRIES:
- * ZIPLIST èŠ‚ç‚¹ï¼š
+ * ZIPLIST ½Úµã£º
  *
- * Every entry in the ziplist is prefixed by a header that contains two pieces
+ * Every entry in the ziplist is prefixed by metadata that contains two pieces
  * of information. First, the length of the previous entry is stored to be
- * able to traverse the list from back to front. Second, the encoding with an
- * optional string length of the entry itself is stored.
+ * able to traverse the list from back to front. Second, the entry encoding is
+ * provided. It represents the entry type, integer or string, and in the case
+ * of strings it also represents the length of the string payload.
+ * So a complete entry is stored like this:
  *
- * æ¯ä¸ª ziplist èŠ‚ç‚¹çš„å‰é¢éƒ½å¸¦æœ‰ä¸€ä¸ª header ï¼Œè¿™ä¸ª header åŒ…å«ä¸¤éƒ¨åˆ†ä¿¡æ¯ï¼š
+ * Ã¿¸ö ziplist ½ÚµãµÄÇ°Ãæ¶¼´øÓĞÒ»¸ö header £¬Õâ¸ö header °üº¬Á½²¿·ÖĞÅÏ¢£º
  *
- * 1)å‰ç½®èŠ‚ç‚¹çš„é•¿åº¦ï¼Œåœ¨ç¨‹åºä»åå‘å‰éå†æ—¶ä½¿ç”¨ã€‚
+ * 1)Ç°ÖÃ½ÚµãµÄ³¤¶È£¬ÔÚ³ÌĞò´ÓºóÏòÇ°±éÀúÊ±Ê¹ÓÃ¡£
  *
- * 2)å½“å‰èŠ‚ç‚¹æ‰€ä¿å­˜çš„å€¼çš„ç±»å‹å’Œé•¿åº¦ã€‚
+ * 2)µ±Ç°½ÚµãËù±£´æµÄÖµµÄÀàĞÍºÍ³¤¶È¡£
+ * <prevlen> <encoding> <entry-data>
  *
- * The length of the previous entry is encoded in the following way:
+ * Sometimes the encoding represents the entry itself, like for small integers
+ * as we'll see later. In such a case the <entry-data> part is missing, and we
+ * could have just:
+ *
+ * <prevlen> <encoding>
+ *
+ * The length of the previous entry, <prevlen>, is encoded in the following way:
  * If this length is smaller than 254 bytes, it will only consume a single
- * byte that takes the length as value. When the length is greater than or
- * equal to 254, it will consume 5 bytes. The first byte is set to 254 to
- * indicate a larger value is following. The remaining 4 bytes take the
- * length of the previous entry as value.
+ * byte representing the length as an unsinged 8 bit integer. When the length
+ * is greater than or equal to 254, it will consume 5 bytes. The first byte is
+ * set to 254 (FE) to indicate a larger value is following. The remaining 4
+ * bytes take the length of the previous entry as value.
  *
- * ç¼–ç å‰ç½®èŠ‚ç‚¹çš„é•¿åº¦çš„æ–¹æ³•å¦‚ä¸‹ï¼š
+ * ±àÂëÇ°ÖÃ½ÚµãµÄ³¤¶ÈµÄ·½·¨ÈçÏÂ£º
  *
- * 1) å¦‚æœå‰ç½®èŠ‚ç‚¹çš„é•¿åº¦å°äº 254 å­—èŠ‚ï¼Œé‚£ä¹ˆç¨‹åºå°†ä½¿ç”¨ 1 ä¸ªå­—èŠ‚æ¥ä¿å­˜è¿™ä¸ªé•¿åº¦å€¼ã€‚
+ * 1) Èç¹ûÇ°ÖÃ½ÚµãµÄ³¤¶ÈĞ¡ÓÚ 254 ×Ö½Ú£¬ÄÇÃ´³ÌĞò½«Ê¹ÓÃ 1 ¸ö×Ö½ÚÀ´±£´æÕâ¸ö³¤¶ÈÖµ¡£
  *
- * 2) å¦‚æœå‰ç½®èŠ‚ç‚¹çš„é•¿åº¦å¤§äºç­‰äº 254 å­—èŠ‚ï¼Œé‚£ä¹ˆç¨‹åºå°†ä½¿ç”¨ 5 ä¸ªå­—èŠ‚æ¥ä¿å­˜è¿™ä¸ªé•¿åº¦å€¼ï¼š
- *    a) ç¬¬ 1 ä¸ªå­—èŠ‚çš„å€¼å°†è¢«è®¾ä¸º 254 ï¼Œç”¨äºæ ‡è¯†è¿™æ˜¯ä¸€ä¸ª 5 å­—èŠ‚é•¿çš„é•¿åº¦å€¼ã€‚
- *    b) ä¹‹åçš„ 4 ä¸ªå­—èŠ‚åˆ™ç”¨äºä¿å­˜å‰ç½®èŠ‚ç‚¹çš„å®é™…é•¿åº¦ã€‚
+ * 2) Èç¹ûÇ°ÖÃ½ÚµãµÄ³¤¶È´óÓÚµÈÓÚ 254 ×Ö½Ú£¬ÄÇÃ´³ÌĞò½«Ê¹ÓÃ 5 ¸ö×Ö½ÚÀ´±£´æÕâ¸ö³¤¶ÈÖµ£º
+ *    a) µÚ 1 ¸ö×Ö½ÚµÄÖµ½«±»ÉèÎª 254 £¬ÓÃÓÚ±êÊ¶ÕâÊÇÒ»¸ö 5 ×Ö½Ú³¤µÄ³¤¶ÈÖµ¡£
+ *    b) Ö®ºóµÄ 4 ¸ö×Ö½ÚÔòÓÃÓÚ±£´æÇ°ÖÃ½ÚµãµÄÊµ¼Ê³¤¶È¡£
  *
- * The other header field of the entry itself depends on the contents of the
- * entry. When the entry is a string, the first 2 bits of this header will hold
- * the type of encoding used to store the length of the string, followed by the
- * actual length of the string. When the entry is an integer the first 2 bits
- * are both set to 1. The following 2 bits are used to specify what kind of
- * integer will be stored after this header. An overview of the different
- * types and encodings is as follows:
+ * So practically an entry is encoded in the following way:
  *
- * header å¦ä¸€éƒ¨åˆ†çš„å†…å®¹å’ŒèŠ‚ç‚¹æ‰€ä¿å­˜çš„å€¼æœ‰å…³ã€‚
+ * <prevlen from 0 to 253> <encoding> <entry>
  *
- * 1) å¦‚æœèŠ‚ç‚¹ä¿å­˜çš„æ˜¯å­—ç¬¦ä¸²å€¼ï¼Œ
- *    é‚£ä¹ˆè¿™éƒ¨åˆ† header çš„å¤´ 2 ä¸ªä½å°†ä¿å­˜ç¼–ç å­—ç¬¦ä¸²é•¿åº¦æ‰€ä½¿ç”¨çš„ç±»å‹ï¼Œ
- *    è€Œä¹‹åè·Ÿç€çš„å†…å®¹åˆ™æ˜¯å­—ç¬¦ä¸²çš„å®é™…é•¿åº¦ã€‚
+ * Or alternatively if the previous entry length is greater than 253 bytes
+ * the following encoding is used:
  *
+ * 0xFE <4 bytes unsigned little endian prevlen> <encoding> <entry>
+ *
+ * The encoding field of the entry depends on the content of the
+ * entry. When the entry is a string, the first 2 bits of the encoding first
+ * byte will hold the type of encoding used to store the length of the string,
+ * followed by the actual length of the string. When the entry is an integer
+ * the first 2 bits are both set to 1. The following 2 bits are used to specify
+ * what kind of integer will be stored after this header. An overview of the
+ * different types and encodings is as follows. The first byte is always enough
+ * to determine the kind of entry.
+ *
+ * header ÁíÒ»²¿·ÖµÄÄÚÈİºÍ½ÚµãËù±£´æµÄÖµÓĞ¹Ø¡£
+ *
+ * 1) Èç¹û½Úµã±£´æµÄÊÇ×Ö·û´®Öµ£¬
+ *    ÄÇÃ´Õâ²¿·Ö header µÄÍ· 2 ¸öÎ»½«±£´æ±àÂë×Ö·û´®³¤¶ÈËùÊ¹ÓÃµÄÀàĞÍ£¬
+ *    ¶øÖ®ºó¸ú×ÅµÄÄÚÈİÔòÊÇ×Ö·û´®µÄÊµ¼Ê³¤¶È
  * |00pppppp| - 1 byte
  *      String value with length less than or equal to 63 bytes (6 bits).
- *      å­—ç¬¦ä¸²çš„é•¿åº¦å°äºæˆ–ç­‰äº 63 å­—èŠ‚ã€‚
+ *      "pppppp" represents the unsigned 6 bit length.
+*      ×Ö·û´®µÄ³¤¶ÈĞ¡ÓÚ»òµÈÓÚ 63 ×Ö½Ú¡£
  * |01pppppp|qqqqqqqq| - 2 bytes
  *      String value with length less than or equal to 16383 bytes (14 bits).
- *      å­—ç¬¦ä¸²çš„é•¿åº¦å°äºæˆ–ç­‰äº 16383 å­—èŠ‚ã€‚
- * |10______|qqqqqqqq|rrrrrrrr|ssssssss|tttttttt| - 5 bytes
+ *      IMPORTANT: The 14 bit number is stored in big endian.
+ *      ×Ö·û´®µÄ³¤¶ÈĞ¡ÓÚ»òµÈÓÚ 16383 ×Ö½Ú¡£
+ * |10000000|qqqqqqqq|rrrrrrrr|ssssssss|tttttttt| - 5 bytes
+ *      ×Ö·û´®µÄ³¤¶È´óÓÚ»òµÈÓÚ 16384 ×Ö½Ú¡£
+ *
+ * 2) Èç¹û½Úµã±£´æµÄÊÇÕûÊıÖµ£¬
+ *    ÄÇÃ´Õâ²¿·Ö header µÄÍ· 2 Î»¶¼½«±»ÉèÖÃÎª 1 £¬
+ *    ¶øÖ®ºó¸ú×ÅµÄ 2 Î»ÔòÓÃÓÚ±êÊ¶½ÚµãËù±£´æµÄÕûÊıµÄÀàĞÍ¡£
  *      String value with length greater than or equal to 16384 bytes.
- *      å­—ç¬¦ä¸²çš„é•¿åº¦å¤§äºæˆ–ç­‰äº 16384 å­—èŠ‚ã€‚
- *
- * 2) å¦‚æœèŠ‚ç‚¹ä¿å­˜çš„æ˜¯æ•´æ•°å€¼ï¼Œ
- *    é‚£ä¹ˆè¿™éƒ¨åˆ† header çš„å¤´ 2 ä½éƒ½å°†è¢«è®¾ç½®ä¸º 1 ï¼Œ
- *    è€Œä¹‹åè·Ÿç€çš„ 2 ä½åˆ™ç”¨äºæ ‡è¯†èŠ‚ç‚¹æ‰€ä¿å­˜çš„æ•´æ•°çš„ç±»å‹ã€‚
- *
- * |11000000| - 1 byte
+ *      Only the 4 bytes following the first byte represents the length
+ *      up to 2^32-1. The 6 lower bits of the first byte are not used and
+ *      are set to zero.
+ *      IMPORTANT: The 32 bit number is stored in big endian.
+ * |11000000| - 3 bytes
+ *      ½ÚµãµÄÖµÎª int16_t ÀàĞÍµÄÕûÊı£¬³¤¶ÈÎª 2 ×Ö½Ú
  *      Integer encoded as int16_t (2 bytes).
- *      èŠ‚ç‚¹çš„å€¼ä¸º int16_t ç±»å‹çš„æ•´æ•°ï¼Œé•¿åº¦ä¸º 2 å­—èŠ‚ã€‚
- * |11010000| - 1 byte
+
+ * |11010000| - 5 bytes
+ *      ½ÚµãµÄÖµÎª int32_t ÀàĞÍµÄÕûÊı£¬³¤¶ÈÎª 4 ×Ö½Ú¡£
  *      Integer encoded as int32_t (4 bytes).
- *      èŠ‚ç‚¹çš„å€¼ä¸º int32_t ç±»å‹çš„æ•´æ•°ï¼Œé•¿åº¦ä¸º 4 å­—èŠ‚ã€‚
- * |11100000| - 1 byte
+
+ * |11100000| - 9 bytes
+ *      ½ÚµãµÄÖµÎª int64_t ÀàĞÍµÄÕûÊı£¬³¤¶ÈÎª 8 ×Ö½Ú¡£
  *      Integer encoded as int64_t (8 bytes).
- *      èŠ‚ç‚¹çš„å€¼ä¸º int64_t ç±»å‹çš„æ•´æ•°ï¼Œé•¿åº¦ä¸º 8 å­—èŠ‚ã€‚
- * |11110000| - 1 byte
+
+ * |11110000| - 4 bytes
+ *      ½ÚµãµÄÖµÎª 24 Î»£¨3 ×Ö½Ú£©³¤µÄÕûÊı¡£
  *      Integer encoded as 24 bit signed (3 bytes).
- *      èŠ‚ç‚¹çš„å€¼ä¸º 24 ä½ï¼ˆ3 å­—èŠ‚ï¼‰é•¿çš„æ•´æ•°ã€‚
- * |11111110| - 1 byte
+
+ * |11111110| - 2 bytes
+ *      ½ÚµãµÄÖµÎª 8 Î»£¨1 ×Ö½Ú£©³¤µÄÕûÊı¡£
  *      Integer encoded as 8 bit signed (1 byte).
- *      èŠ‚ç‚¹çš„å€¼ä¸º 8 ä½ï¼ˆ1 å­—èŠ‚ï¼‰é•¿çš„æ•´æ•°ã€‚
- * |1111xxxx| - (with xxxx between 0000 and 1101) immediate 4 bit integer.
+
+
+ * |1111xxxx| - (with xxxx between 0001 and 1101) immediate 4 bit integer.
  *      Unsigned integer from 0 to 12. The encoded value is actually from
  *      1 to 13 because 0000 and 1111 can not be used, so 1 should be
  *      subtracted from the encoded 4 bit value to obtain the right value.
- *      èŠ‚ç‚¹çš„å€¼ä¸ºä»‹äº 0 è‡³ 12 ä¹‹é—´çš„æ— ç¬¦å·æ•´æ•°ã€‚
- *      å› ä¸º 0000 å’Œ 1111 éƒ½ä¸èƒ½ä½¿ç”¨ï¼Œæ‰€ä»¥ä½çš„å®é™…å€¼å°†æ˜¯ 1 è‡³ 13 ã€‚
- *      ç¨‹åºåœ¨å–å¾—è¿™ 4 ä¸ªä½çš„å€¼ä¹‹åï¼Œè¿˜éœ€è¦å‡å» 1 ï¼Œæ‰èƒ½è®¡ç®—å‡ºæ­£ç¡®çš„å€¼ã€‚
- *      æ¯”å¦‚è¯´ï¼Œå¦‚æœä½çš„å€¼ä¸º 0001 = 1 ï¼Œé‚£ä¹ˆç¨‹åºè¿”å›çš„å€¼å°†æ˜¯ 1 - 1 = 0 ã€‚
- * |11111111| - End of ziplist.
- *      ziplist çš„ç»“å°¾æ ‡è¯†
+ *      ½ÚµãµÄÖµÎª½éÓÚ 0 ÖÁ 12 Ö®¼äµÄÎŞ·ûºÅÕûÊı¡£
+ *      ÒòÎª 0000 ºÍ 1111 ¶¼²»ÄÜÊ¹ÓÃ£¬ËùÒÔÎ»µÄÊµ¼ÊÖµ½«ÊÇ 1 ÖÁ 13 ¡£
+ *      ³ÌĞòÔÚÈ¡µÃÕâ 4 ¸öÎ»µÄÖµÖ®ºó£¬»¹ĞèÒª¼õÈ¥ 1 £¬²ÅÄÜ¼ÆËã³öÕıÈ·µÄÖµ¡£
+ *      ±ÈÈçËµ£¬Èç¹ûÎ»µÄÖµÎª 0001 = 1 £¬ÄÇÃ´³ÌĞò·µ»ØµÄÖµ½«ÊÇ 1 - 1 = 0 
+ * |11111111| - End of ziplist special entry.
+ *      ziplist µÄ½áÎ²±êÊ¶
  *
- * All the integers are represented in little endian byte order.
+ * Like for the ziplist header,
+ * all the integers are represented in little
+ * ËùÓĞÕûÊı¶¼±íÊ¾ÎªĞ¡¶Ë×Ö½ÚĞò¡£
+ * endian byte order, even when this code is compiled in big endian systems.
  *
- * æ‰€æœ‰æ•´æ•°éƒ½è¡¨ç¤ºä¸ºå°ç«¯å­—èŠ‚åºã€‚
+ * EXAMPLES OF ACTUAL ZIPLISTS
+ * ===========================
+ *
+ * The following is a ziplist containing the two elements representing
+ * the strings "2" and "5". It is composed of 15 bytes, that we visually
+ * split into sections:
+ *
+ *  [0f 00 00 00] [0c 00 00 00] [02 00] [00 f3] [02 f6] [ff]
+ *        |             |          |       |       |     |
+ *     zlbytes        zltail    entries   "2"     "5"   end
+ *
+ * The first 4 bytes represent the number 15, that is the number of bytes
+ * the whole ziplist is composed of. The second 4 bytes are the offset
+ * at which the last ziplist entry is found, that is 12, in fact the
+ * last entry, that is "5", is at offset 12 inside the ziplist.
+ * The next 16 bit integer represents the number of elements inside the
+ * ziplist, its value is 2 since there are just two elements inside.
+ * Finally "00 f3" is the first entry representing the number 2. It is
+ * composed of the previous entry length, which is zero because this is
+ * our first entry, and the byte F3 which corresponds to the encoding
+ * |1111xxxx| with xxxx between 0001 and 1101. We need to remove the "F"
+ * higher order bits 1111, and subtract 1 from the "3", so the entry value
+ * is "2". The next entry has a prevlen of 02, since the first entry is
+ * composed of exactly two bytes. The entry itself, F6, is encoded exactly
+ * like the first entry, and 6-1 = 5, so the value of the entry is 5.
+ * Finally the special entry FF signals the end of the ziplist.
+ *
+ * Adding another element to the above string with the value "Hello World"
+ * allows us to show how the ziplist encodes small strings. We'll just show
+ * the hex dump of the entry itself. Imagine the bytes as following the
+ * entry that stores "5" in the ziplist above:
+ *
+ * [02] [0b] [48 65 6c 6c 6f 20 57 6f 72 6c 64]
+ *
+ * The first byte, 02, is the length of the previous entry. The next
+ * byte represents the encoding in the pattern |00pppppp| that means
+ * that the entry is a string of length <pppppp>, so 0B means that
+ * an 11 bytes string follows. From the third byte (48) to the last (64)
+ * there are just the ASCII characters for "Hello World".
  *
  * ----------------------------------------------------------------------------
  *
  * Copyright (c) 2009-2012, Pieter Noordhuis <pcnoordhuis at gmail dot com>
- * Copyright (c) 2009-2012, Salvatore Sanfilippo <antirez at gmail dot com>
+ * Copyright (c) 2009-2017, Salvatore Sanfilippo <antirez at gmail dot com>
+ * Copyright (c) 2020, Redis Labs, Inc
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -184,31 +258,35 @@
 #include "zmalloc.h"
 #include "util.h"
 #include "ziplist.h"
+#include "config.h"
 #include "endianconv.h"
 #include "redisassert.h"
 
 /*
- * ziplist æœ«ç«¯æ ‡è¯†ç¬¦ï¼Œä»¥åŠ 5 å­—èŠ‚é•¿é•¿åº¦æ ‡è¯†ç¬¦
+ * ziplist Ä©¶Ë±êÊ¶·û£¬ÒÔ¼° 5 ×Ö½Ú³¤³¤¶È±êÊ¶·û
  */
-#define ZIP_END 255
-#define ZIP_BIGLEN 254
+#define ZIP_END 255         /* Special "end of ziplist" entry. */
+#define ZIP_BIG_PREVLEN 254 /* ZIP_BIG_PREVLEN - 1 is the max number of bytes of
+                               the previous entry, for the "prevlen" field prefixing
+                               each entry, to be represented with just a single byte.
+                               Otherwise it is represented as FE AA BB CC DD, where
+                               AA BB CC DD are a 4 bytes unsigned integer
+                               representing the previous entry len. */
 
 /* Different encoding/length possibilities */
 /*
- * å­—ç¬¦ä¸²ç¼–ç å’Œæ•´æ•°ç¼–ç çš„æ©ç 
+ * ×Ö·û´®±àÂëºÍÕûÊı±àÂëµÄÑÚÂë
  */
 #define ZIP_STR_MASK 0xc0
 #define ZIP_INT_MASK 0x30
-
 /*
- * å­—ç¬¦ä¸²ç¼–ç ç±»å‹
+ * ×Ö·û´®±àÂëÀàĞÍ
  */
 #define ZIP_STR_06B (0 << 6)
 #define ZIP_STR_14B (1 << 6)
 #define ZIP_STR_32B (2 << 6)
-
 /*
- * æ•´æ•°ç¼–ç ç±»å‹
+ * ÕûÊı±àÂëÀàĞÍ
  */
 #define ZIP_INT_16B (0xc0 | 0<<4)
 #define ZIP_INT_32B (0xc0 | 1<<4)
@@ -216,51 +294,72 @@
 #define ZIP_INT_24B (0xc0 | 3<<4)
 #define ZIP_INT_8B 0xfe
 
-/* 4 bit integer immediate encoding 
+/* 4 bit integer immediate encoding |1111xxxx| with xxxx between
  *
- * 4 ä½æ•´æ•°ç¼–ç çš„æ©ç å’Œç±»å‹
- */
-#define ZIP_INT_IMM_MASK 0x0f
+ * 4 Î»ÕûÊı±àÂëµÄÑÚÂëºÍÀàĞÍ
+ * 0001 and 1101. */
+#define ZIP_INT_IMM_MASK 0x0f   /* Mask to extract the 4 bits value. To add
+                                   one is needed to reconstruct the value. */
 #define ZIP_INT_IMM_MIN 0xf1    /* 11110001 */
 #define ZIP_INT_IMM_MAX 0xfd    /* 11111101 */
-#define ZIP_INT_IMM_VAL(v) (v & ZIP_INT_IMM_MASK)
 
 /*
- * 24 ä½æ•´æ•°çš„æœ€å¤§å€¼å’Œæœ€å°å€¼
+ * 24 Î»ÕûÊıµÄ×î´óÖµºÍ×îĞ¡Öµ
  */
 #define INT24_MAX 0x7fffff
 #define INT24_MIN (-INT24_MAX - 1)
 
+/* Macro to determine if the entry is a string. String entries never start
+ * with "11" as most significant bits of the first byte. */
 /* Macro to determine type 
  *
- * æŸ¥çœ‹ç»™å®šç¼–ç  enc æ˜¯å¦å­—ç¬¦ä¸²ç¼–ç 
+ * ²é¿´¸ø¶¨±àÂë enc ÊÇ·ñ×Ö·û´®±àÂë
  */
 #define ZIP_IS_STR(enc) (((enc) & ZIP_STR_MASK) < ZIP_STR_MASK)
 
-/* Utility macros */
-/*
- * ziplist å±æ€§å®
- */
-// å®šä½åˆ° ziplist çš„ bytes å±æ€§ï¼Œè¯¥å±æ€§è®°å½•äº†æ•´ä¸ª ziplist æ‰€å ç”¨çš„å†…å­˜å­—èŠ‚æ•°
-// ç”¨äºå–å‡º bytes å±æ€§çš„ç°æœ‰å€¼ï¼Œæˆ–è€…ä¸º bytes å±æ€§èµ‹äºˆæ–°å€¼
+/* Utility macros.*/
+
+/* Return total bytes a ziplist is composed of. */
+// ¶¨Î»µ½ ziplist µÄ bytes ÊôĞÔ£¬¸ÃÊôĞÔ¼ÇÂ¼ÁËÕû¸ö ziplist ËùÕ¼ÓÃµÄÄÚ´æ×Ö½ÚÊı
+// ÓÃÓÚÈ¡³ö bytes ÊôĞÔµÄÏÖÓĞÖµ£¬»òÕßÎª bytes ÊôĞÔ¸³ÓèĞÂÖµ
 #define ZIPLIST_BYTES(zl)       (*((uint32_t*)(zl)))
-// å®šä½åˆ° ziplist çš„ offset å±æ€§ï¼Œè¯¥å±æ€§è®°å½•äº†åˆ°è¾¾è¡¨å°¾èŠ‚ç‚¹çš„åç§»é‡
-// ç”¨äºå–å‡º offset å±æ€§çš„ç°æœ‰å€¼ï¼Œæˆ–è€…ä¸º offset å±æ€§èµ‹äºˆæ–°å€¼
+
+/* Return the offset of the last item inside the ziplist. */
+// ¶¨Î»µ½ ziplist µÄ offset ÊôĞÔ£¬¸ÃÊôĞÔ¼ÇÂ¼ÁËµ½´ï±íÎ²½ÚµãµÄÆ«ÒÆÁ¿
+// ÓÃÓÚÈ¡³ö offset ÊôĞÔµÄÏÖÓĞÖµ£¬»òÕßÎª offset ÊôĞÔ¸³ÓèĞÂÖµ
 #define ZIPLIST_TAIL_OFFSET(zl) (*((uint32_t*)((zl)+sizeof(uint32_t))))
-// å®šä½åˆ° ziplist çš„ length å±æ€§ï¼Œè¯¥å±æ€§è®°å½•äº† ziplist åŒ…å«çš„èŠ‚ç‚¹æ•°é‡
-// ç”¨äºå–å‡º length å±æ€§çš„ç°æœ‰å€¼ï¼Œæˆ–è€…ä¸º length å±æ€§èµ‹äºˆæ–°å€¼
+
+/* Return the length of a ziplist, or UINT16_MAX if the length cannot be
+ * determined without scanning the whole ziplist. */
+// ¶¨Î»µ½ ziplist µÄ length ÊôĞÔ£¬¸ÃÊôĞÔ¼ÇÂ¼ÁË ziplist °üº¬µÄ½ÚµãÊıÁ¿
+// ÓÃÓÚÈ¡³ö length ÊôĞÔµÄÏÖÓĞÖµ£¬»òÕßÎª length ÊôĞÔ¸³ÓèĞÂÖµ
 #define ZIPLIST_LENGTH(zl)      (*((uint16_t*)((zl)+sizeof(uint32_t)*2)))
-// è¿”å› ziplist è¡¨å¤´çš„å¤§å°
+
+/* The size of a ziplist header: two 32 bit integers for the total
+ * bytes count and last item offset. One 16 bit integer for the number
+ * of items field. */
+»Ø ziplist ±íÍ·µÄ´óĞ¡
 #define ZIPLIST_HEADER_SIZE     (sizeof(uint32_t)*2+sizeof(uint16_t))
-// è¿”å›æŒ‡å‘ ziplist ç¬¬ä¸€ä¸ªèŠ‚ç‚¹ï¼ˆçš„èµ·å§‹ä½ç½®ï¼‰çš„æŒ‡é’ˆ
+
+/* Size of the "end of ziplist" entry. Just one byte. */
+#define ZIPLIST_END_SIZE        (sizeof(uint8_t))
+
+/* Return the pointer to the first entry of a ziplist. */
+// ·µ»ØÖ¸Ïò ziplist µÚÒ»¸ö½Úµã£¨µÄÆğÊ¼Î»ÖÃ£©µÄÖ¸Õë
 #define ZIPLIST_ENTRY_HEAD(zl)  ((zl)+ZIPLIST_HEADER_SIZE)
-// è¿”å›æŒ‡å‘ ziplist æœ€åä¸€ä¸ªèŠ‚ç‚¹ï¼ˆçš„èµ·å§‹ä½ç½®ï¼‰çš„æŒ‡é’ˆ
+
+/* Return the pointer to the last entry of a ziplist, using the
+ * last entry offset inside the ziplist header. */
+// ·µ»ØÖ¸Ïò ziplist ×îºóÒ»¸ö½Úµã£¨µÄÆğÊ¼Î»ÖÃ£©µÄÖ¸Õë
 #define ZIPLIST_ENTRY_TAIL(zl)  ((zl)+intrev32ifbe(ZIPLIST_TAIL_OFFSET(zl)))
-// è¿”å›æŒ‡å‘ ziplist æœ«ç«¯ ZIP_END ï¼ˆçš„èµ·å§‹ä½ç½®ï¼‰çš„æŒ‡é’ˆ
+
+/* Return the pointer to the last byte of a ziplist, which is, the
+ * end of ziplist FF entry. */
+// ·µ»ØÖ¸Ïò ziplist Ä©¶Ë ZIP_END £¨µÄÆğÊ¼Î»ÖÃ£©µÄÖ¸
 #define ZIPLIST_ENTRY_END(zl)   ((zl)+intrev32ifbe(ZIPLIST_BYTES(zl))-1)
 
 /* 
-ç©ºç™½ ziplist ç¤ºä¾‹å›¾
+¿Õ°× ziplist Ê¾ÀıÍ¼
 
 area        |<---- ziplist header ---->|<-- end -->|
 
@@ -278,7 +377,7 @@ address                        ZIPLIST_ENTRY_TAIL
                                        &
                                ZIPLIST_ENTRY_END
 
-éç©º ziplist ç¤ºä¾‹å›¾
+·Ç¿Õ ziplist Ê¾ÀıÍ¼
 
 area        |<---- ziplist header ---->|<----------- entries ------------->|<-end->|
 
@@ -293,10 +392,13 @@ address                                |                          |        |
                                                         ZIPLIST_ENTRY_TAIL
 */
 
-/* We know a positive increment can only be 1 because entries can only be
- * pushed one at a time. */
+/* Increment the number of items field in the ziplist header. Note that this
+ * macro should never overflow the unsigned 16 bit integer, since entries are
+ * always pushed one at a time. When UINT16_MAX is reached we want the count
+ * to stay there to signal that a full scan is needed to get the number of
+ * items inside the ziplist. */
 /*
- * å¢åŠ  ziplist çš„èŠ‚ç‚¹æ•°
+ * Ôö¼Ó ziplist µÄ½ÚµãÊı
  *
  * T = O(1)
  */
@@ -305,77 +407,135 @@ address                                |                          |        |
         ZIPLIST_LENGTH(zl) = intrev16ifbe(intrev16ifbe(ZIPLIST_LENGTH(zl))+incr); \
 }
 
+/* We use this function to receive information about a ziplist entry.
+ * Note that this is not how the data is actually encoded, is just what we
+ * get filled by a function in order to operate more easily. */
 /*
- * ä¿å­˜ ziplist èŠ‚ç‚¹ä¿¡æ¯çš„ç»“æ„
+ * ±£´æ ziplist ½ÚµãĞÅÏ¢µÄ½á¹¹
  */
 typedef struct zlentry {
 
-    // prevrawlen ï¼šå‰ç½®èŠ‚ç‚¹çš„é•¿åº¦
-    // prevrawlensize ï¼šç¼–ç  prevrawlen æ‰€éœ€çš„å­—èŠ‚å¤§å°
-    unsigned int prevrawlensize, prevrawlen;
+    // prevrawlen £ºÇ°ÖÃ½ÚµãµÄ³¤¶È
+    // prevrawlensize £º±àÂë prevrawlen ËùĞèµÄ×Ö½Ú´óĞ¡
+    unsigned int prevrawlensize; /* Bytes used to encode the previous entry len*/
 
-    // len ï¼šå½“å‰èŠ‚ç‚¹å€¼çš„é•¿åº¦
-    // lensize ï¼šç¼–ç  len æ‰€éœ€çš„å­—èŠ‚å¤§å°
-    unsigned int lensize, len;
 
-    // å½“å‰èŠ‚ç‚¹ header çš„å¤§å°
-    // ç­‰äº prevrawlensize + lensize
-    unsigned int headersize;
+    unsigned int prevrawlen;     /* Previous entry len. */
 
-    // å½“å‰èŠ‚ç‚¹å€¼æ‰€ä½¿ç”¨çš„ç¼–ç ç±»å‹
-    unsigned char encoding;
 
-    // æŒ‡å‘å½“å‰èŠ‚ç‚¹çš„æŒ‡é’ˆ
-    unsigned char *p;
+    // len £ºµ±Ç°½ÚµãÖµµÄ³¤¶È
+    // lensize £º±àÂë len ËùĞèµÄ×Ö½Ú´óĞ¡
+    unsigned int lensize;        /* Bytes used to encode this entry type/len.
+                                    For example strings have a 1, 2 or 5 bytes
+                                    header. Integers always use a single byte.*/
+    unsigned int len;            /* Bytes used to represent the actual entry.
+                                    For strings this is just the string length
+                                    while for integers it is 1, 2, 3, 4, 8 or
+                                    0 (for 4 bit immediate) depending on the
+                                    number range. */
 
+
+    // µ±Ç°½Úµã header µÄ´óĞ¡
+    // µÈÓÚ prevrawlensize + lensize
+    unsigned int headersize;     /* prevrawlensize + lensize. */
+
+    // µ±Ç°½ÚµãÖµËùÊ¹ÓÃµÄ±àÂëÀàĞÍ
+    unsigned char encoding;      /* Set to ZIP_STR_* or ZIP_INT_* depending on
+                                    the entry encoding. However for 4 bits
+                                    immediate integers this can assume a range
+                                    of values and must be range-checked. */
+
+    // Ö¸Ïòµ±Ç°½ÚµãµÄÖ¸Õë
+    unsigned char *p;            /* Pointer to the very start of the entry, that
+                                    is, this points to prev-entry-len field. */
 } zlentry;
 
+#define ZIPLIST_ENTRY_ZERO(zle) { \
+    (zle)->prevrawlensize = (zle)->prevrawlen = 0; \
+    (zle)->lensize = (zle)->len = (zle)->headersize = 0; \
+    (zle)->encoding = 0; \
+    (zle)->p = NULL; \
+}
+
 /* Extract the encoding from the byte pointed by 'ptr' and set it into
- * 'encoding'. 
+ * 'encoding' field of the zlentry structure. 
  *
- * ä» ptr ä¸­å–å‡ºèŠ‚ç‚¹å€¼çš„ç¼–ç ç±»å‹ï¼Œå¹¶å°†å®ƒä¿å­˜åˆ° encoding å˜é‡ä¸­ã€‚
+ * ´Ó ptr ÖĞÈ¡³ö½ÚµãÖµµÄ±àÂëÀàĞÍ£¬²¢½«Ëü±£´æµ½ encoding ±äÁ¿ÖĞ¡£
  *
  * T = O(1)
  */
 #define ZIP_ENTRY_ENCODING(ptr, encoding) do {  \
-    (encoding) = (ptr[0]); \
+    (encoding) = ((ptr)[0]); \
     if ((encoding) < ZIP_STR_MASK) (encoding) &= ZIP_STR_MASK; \
 } while(0)
 
-/* Return bytes needed to store integer encoded by 'encoding' 
+#define ZIP_ENCODING_SIZE_INVALID 0xff
+/* Return the number of bytes required to encode the entry type + length.
+ * On error, return ZIP_ENCODING_SIZE_INVALID 
  *
- * è¿”å›ä¿å­˜ encoding ç¼–ç çš„å€¼æ‰€éœ€çš„å­—èŠ‚æ•°é‡
+ * ·µ»Ø±£´æ encoding ±àÂëµÄÖµËùĞèµÄ×Ö½ÚÊıÁ¿
  *
  * T = O(1)
  */
-static unsigned int zipIntSize(unsigned char encoding) {
+static inline unsigned int zipEncodingLenSize(unsigned char encoding) {
+    if (encoding == ZIP_INT_16B || encoding == ZIP_INT_32B ||
+        encoding == ZIP_INT_24B || encoding == ZIP_INT_64B ||
+        encoding == ZIP_INT_8B)
+        return 1;
+    if (encoding >= ZIP_INT_IMM_MIN && encoding <= ZIP_INT_IMM_MAX)
+        return 1;
+    if (encoding == ZIP_STR_06B)
+        return 1;
+    if (encoding == ZIP_STR_14B)
+        return 2;
+    if (encoding == ZIP_STR_32B)
+        return 5;
+    return ZIP_ENCODING_SIZE_INVALID;
+}
 
+#define ZIP_ASSERT_ENCODING(encoding) do {                                     \
+    assert(zipEncodingLenSize(encoding) != ZIP_ENCODING_SIZE_INVALID);         \
+} while (0)
+
+/* Return bytes needed to store integer encoded by 'encoding' */
+static inline unsigned int zipIntSize(unsigned char encoding) {
     switch(encoding) {
     case ZIP_INT_8B:  return 1;
     case ZIP_INT_16B: return 2;
     case ZIP_INT_24B: return 3;
     case ZIP_INT_32B: return 4;
     case ZIP_INT_64B: return 8;
-    default: return 0; /* 4 bit immediate */
     }
-
-    assert(NULL);
+    if (encoding >= ZIP_INT_IMM_MIN && encoding <= ZIP_INT_IMM_MAX)
+        return 0; /* 4 bit immediate */
+    /* bad encoding, covered by a previous call to ZIP_ASSERT_ENCODING */
+    redis_unreachable();
     return 0;
 }
 
-/* Encode the length 'l' writing it in 'p'. If p is NULL it just returns
- * the amount of bytes required to encode such a length. 
+/* Write the encoding header of the entry in 'p'. If p is NULL it just returns
+ * the amount of bytes required to encode such a length. Arguments:
  *
- * ç¼–ç èŠ‚ç‚¹é•¿åº¦å€¼ l ï¼Œå¹¶å°†å®ƒå†™å…¥åˆ° p ä¸­ï¼Œç„¶åè¿”å›ç¼–ç  l æ‰€éœ€çš„å­—èŠ‚æ•°é‡ã€‚
+ * 'encoding' is the encoding we are using for the entry. It could be
+ * ZIP_INT_* or ZIP_STR_* or between ZIP_INT_IMM_MIN and ZIP_INT_IMM_MAX
+ * for single-byte small immediate integers.
  *
- * å¦‚æœ p ä¸º NULL ï¼Œé‚£ä¹ˆä»…è¿”å›ç¼–ç  l æ‰€éœ€çš„å­—èŠ‚æ•°é‡ï¼Œä¸è¿›è¡Œå†™å…¥ã€‚
+ * 'rawlen' is only used for ZIP_STR_* encodings and is the length of the
+ * string that this entry represents.
+ *
+ * The function returns the number of bytes used by the encoding/length
+ * header stored in 'p'. 
+ *
+ * ±àÂë½Úµã³¤¶ÈÖµ l £¬²¢½«ËüĞ´Èëµ½ p ÖĞ£¬È»ºó·µ»Ø±àÂë l ËùĞèµÄ×Ö½ÚÊıÁ¿¡£
+ *
+ * Èç¹û p Îª NULL £¬ÄÇÃ´½ö·µ»Ø±àÂë l ËùĞèµÄ×Ö½ÚÊıÁ¿£¬²»½øĞĞĞ´Èë¡£
  *
  * T = O(1)
  */
-static unsigned int zipEncodeLength(unsigned char *p, unsigned char encoding, unsigned int rawlen) {
+unsigned int zipStoreEntryEncoding(unsigned char *p, unsigned char encoding, unsigned int rawlen) {
     unsigned char len = 1, buf[5];
 
-    // ç¼–ç å­—ç¬¦ä¸²
+    // ±àÂë×Ö·û´®
     if (ZIP_IS_STR(encoding)) {
         /* Although encoding is given it may not be set for strings,
          * so we determine it here using the raw length. */
@@ -397,7 +557,7 @@ static unsigned int zipEncodeLength(unsigned char *p, unsigned char encoding, un
             buf[4] = rawlen & 0xff;
         }
 
-    // ç¼–ç æ•´æ•°
+    // ±àÂëÕûÊı
     } else {
         /* Implies integer encoding, so length is always 1. */
         if (!p) return len;
@@ -405,34 +565,33 @@ static unsigned int zipEncodeLength(unsigned char *p, unsigned char encoding, un
     }
 
     /* Store this length at p */
-    // å°†ç¼–ç åçš„é•¿åº¦å†™å…¥ p 
+    // ½«±àÂëºóµÄ³¤¶ÈĞ´Èë p 
     memcpy(p,buf,len);
 
-    // è¿”å›ç¼–ç æ‰€éœ€çš„å­—èŠ‚æ•°
+    // ·µ»Ø±àÂëËùĞèµÄ×Ö½ÚÊı
     return len;
 }
 
-/* Decode the length encoded in 'ptr'. The 'encoding' variable will hold the
- * entries encoding, the 'lensize' variable will hold the number of bytes
- * required to encode the entries length, and the 'len' variable will hold the
- * entries length. 
+/* Decode the entry encoding type and data length (string length for strings,
+ * number of bytes used for the integer for integer entries) encoded in 'ptr'.
+ * The 'encoding' variable is input, extracted by the caller, the 'lensize'
+ * variable will hold the number of bytes required to encode the entry
+ * length, and the 'len' variable will hold the entry length.
+ * On invalid encoding error, lensize is set to 0. 
  *
- * è§£ç  ptr æŒ‡é’ˆï¼Œå–å‡ºåˆ—è¡¨èŠ‚ç‚¹çš„ç›¸å…³ä¿¡æ¯ï¼Œå¹¶å°†å®ƒä»¬ä¿å­˜åœ¨ä»¥ä¸‹å˜é‡ä¸­ï¼š
+ * ½âÂë ptr Ö¸Õë£¬È¡³öÁĞ±í½ÚµãµÄÏà¹ØĞÅÏ¢£¬²¢½«ËüÃÇ±£´æÔÚÒÔÏÂ±äÁ¿ÖĞ£º
  *
- * - encoding ä¿å­˜èŠ‚ç‚¹å€¼çš„ç¼–ç ç±»å‹ã€‚
+ * - encoding ±£´æ½ÚµãÖµµÄ±àÂëÀàĞÍ¡£
  *
- * - lensize ä¿å­˜ç¼–ç èŠ‚ç‚¹é•¿åº¦æ‰€éœ€çš„å­—èŠ‚æ•°ã€‚
+ * - lensize ±£´æ±àÂë½Úµã³¤¶ÈËùĞèµÄ×Ö½ÚÊı¡£
  *
- * - len ä¿å­˜èŠ‚ç‚¹çš„é•¿åº¦ã€‚
+ * - len ±£´æ½ÚµãµÄ³¤¶È¡£
  *
  * T = O(1)
  */
 #define ZIP_DECODE_LENGTH(ptr, encoding, lensize, len) do {                    \
-                                                                               \
-    /* å–å‡ºå€¼çš„ç¼–ç ç±»å‹ */                                                     \
-    ZIP_ENTRY_ENCODING((ptr), (encoding));                                     \
-                                                                               \
-    /* å­—ç¬¦ä¸²ç¼–ç  */                                                           \
+    /* È¡³öÖµµÄ±àÂëÀàĞÍ */                                                     \
+    /* ×Ö·û´®±àÂë */                                                           \
     if ((encoding) < ZIP_STR_MASK) {                                           \
         if ((encoding) == ZIP_STR_06B) {                                       \
             (lensize) = 1;                                                     \
@@ -440,189 +599,181 @@ static unsigned int zipEncodeLength(unsigned char *p, unsigned char encoding, un
         } else if ((encoding) == ZIP_STR_14B) {                                \
             (lensize) = 2;                                                     \
             (len) = (((ptr)[0] & 0x3f) << 8) | (ptr)[1];                       \
-        } else if (encoding == ZIP_STR_32B) {                                  \
+        } else if ((encoding) == ZIP_STR_32B) {                                \
             (lensize) = 5;                                                     \
             (len) = ((ptr)[1] << 24) |                                         \
                     ((ptr)[2] << 16) |                                         \
                     ((ptr)[3] <<  8) |                                         \
                     ((ptr)[4]);                                                \
         } else {                                                               \
-            assert(NULL);                                                      \
+            (lensize) = 0; /* bad encoding, should be covered by a previous */ \
+            (len) = 0;     /* ZIP_ASSERT_ENCODING / zipEncodingLenSize, or  */ \
+                           /* match the lensize after this macro with 0.    */ \
         }                                                                      \
-                                                                               \
-    /* æ•´æ•°ç¼–ç  */                                                             \
+    /* ÕûÊı±àÂë */                                                             \
     } else {                                                                   \
         (lensize) = 1;                                                         \
-        (len) = zipIntSize(encoding);                                          \
+        if ((encoding) == ZIP_INT_8B)  (len) = 1;                              \
+        else if ((encoding) == ZIP_INT_16B) (len) = 2;                         \
+        else if ((encoding) == ZIP_INT_24B) (len) = 3;                         \
+        else if ((encoding) == ZIP_INT_32B) (len) = 4;                         \
+        else if ((encoding) == ZIP_INT_64B) (len) = 8;                         \
+        else if (encoding >= ZIP_INT_IMM_MIN && encoding <= ZIP_INT_IMM_MAX)   \
+            (len) = 0; /* 4 bit immediate */                                   \
+        else                                                                   \
+            (lensize) = (len) = 0; /* bad encoding */                          \
     }                                                                          \
-} while(0);
-
-/* Encode the length of the previous entry and write it to "p". Return the
- * number of bytes needed to encode this length if "p" is NULL. 
- *
- * å¯¹å‰ç½®èŠ‚ç‚¹çš„é•¿åº¦ len è¿›è¡Œç¼–ç ï¼Œå¹¶å°†å®ƒå†™å…¥åˆ° p ä¸­ï¼Œ
- * ç„¶åè¿”å›ç¼–ç  len æ‰€éœ€çš„å­—èŠ‚æ•°é‡ã€‚
- *
- * å¦‚æœ p ä¸º NULL ï¼Œé‚£ä¹ˆä¸è¿›è¡Œå†™å…¥ï¼Œä»…è¿”å›ç¼–ç  len æ‰€éœ€çš„å­—èŠ‚æ•°é‡ã€‚
- *
- * T = O(1)
- */
-static unsigned int zipPrevEncodeLength(unsigned char *p, unsigned int len) {
-
-    // ä»…è¿”å›ç¼–ç  len æ‰€éœ€çš„å­—èŠ‚æ•°é‡
-    if (p == NULL) {
-        return (len < ZIP_BIGLEN) ? 1 : sizeof(len)+1;
-
-    // å†™å…¥å¹¶è¿”å›ç¼–ç  len æ‰€éœ€çš„å­—èŠ‚æ•°é‡
-    } else {
-
-        // 1 å­—èŠ‚
-        if (len < ZIP_BIGLEN) {
-            p[0] = len;
-            return 1;
-
-        // 5 å­—èŠ‚
-        } else {
-            // æ·»åŠ  5 å­—èŠ‚é•¿åº¦æ ‡è¯†
-            p[0] = ZIP_BIGLEN;
-            // å†™å…¥ç¼–ç 
-            memcpy(p+1,&len,sizeof(len));
-            // å¦‚æœæœ‰å¿…è¦çš„è¯ï¼Œè¿›è¡Œå¤§å°ç«¯è½¬æ¢
-            memrev32ifbe(p+1);
-            // è¿”å›ç¼–ç é•¿åº¦
-            return 1+sizeof(len);
-        }
-    }
-}
+} while(0)
 
 /* Encode the length of the previous entry and write it to "p". This only
  * uses the larger encoding (required in __ziplistCascadeUpdate). 
  *
- * å°†åŸæœ¬åªéœ€è¦ 1 ä¸ªå­—èŠ‚æ¥ä¿å­˜çš„å‰ç½®èŠ‚ç‚¹é•¿åº¦ len ç¼–ç è‡³ä¸€ä¸ª 5 å­—èŠ‚é•¿çš„ header ä¸­ã€‚
+ * ½«Ô­±¾Ö»ĞèÒª 1 ¸ö×Ö½ÚÀ´±£´æµÄÇ°ÖÃ½Úµã³¤¶È len ±àÂëÖÁÒ»¸ö 5 ×Ö½Ú³¤µÄ header ÖĞ¡£
  *
  * T = O(1)
  */
-static void zipPrevEncodeLengthForceLarge(unsigned char *p, unsigned int len) {
-
-    if (p == NULL) return;
-
-    // è®¾ç½® 5 å­—èŠ‚é•¿åº¦æ ‡è¯†
-    p[0] = ZIP_BIGLEN;
-
-    // å†™å…¥ len
-    memcpy(p+1,&len,sizeof(len));
-    memrev32ifbe(p+1);
+int zipStorePrevEntryLengthLarge(unsigned char *p, unsigned int len) {
+    uint32_t u32;
+    if (p != NULL) {
+        // Ìí¼Ó 5 ×Ö½Ú³¤¶È±êÊ¶
+        p[0] = ZIP_BIG_PREVLEN;
+        u32 = len;
+            // Ğ´Èë±àÂë
+        memcpy(p+1,&u32,sizeof(u32));
+            // Èç¹ûÓĞ±ØÒªµÄ»°£¬½øĞĞ´óĞ¡¶Ë×ª»»
+        memrev32ifbe(p+1);
+    }
+            // ·µ»Ø±àÂë³¤¶È
+    return 1 + sizeof(uint32_t);
 }
 
-/* Decode the number of bytes required to store the length of the previous
- * element, from the perspective of the entry pointed to by 'ptr'. 
+/* Encode the length of the previous entry and write it to "p". Return the
+ * number of bytes needed to encode this length if "p" is NULL. 
  *
- * è§£ç  ptr æŒ‡é’ˆï¼Œ
- * å–å‡ºç¼–ç å‰ç½®èŠ‚ç‚¹é•¿åº¦æ‰€éœ€çš„å­—èŠ‚æ•°ï¼Œå¹¶å°†å®ƒä¿å­˜åˆ° prevlensize å˜é‡ä¸­ã€‚
+ * ¶ÔÇ°ÖÃ½ÚµãµÄ³¤¶È len ½øĞĞ±àÂë£¬²¢½«ËüĞ´Èëµ½ p ÖĞ£¬
+ * È»ºó·µ»Ø±àÂë len ËùĞèµÄ×Ö½ÚÊıÁ¿¡£
+ *
+ * Èç¹û p Îª NULL £¬ÄÇÃ´²»½øĞĞĞ´Èë£¬½ö·µ»Ø±àÂë len ËùĞèµÄ×Ö½ÚÊıÁ¿¡£
+ *
+ * T = O(1)
+ */
+unsigned int zipStorePrevEntryLength(unsigned char *p, unsigned int len) {
+    // ½ö·µ»Ø±àÂë len ËùĞèµÄ×Ö½ÚÊıÁ¿
+    if (p == NULL) {
+        return (len < ZIP_BIG_PREVLEN) ? 1 : sizeof(uint32_t) + 1;
+    // Ğ´Èë²¢·µ»Ø±àÂë len ËùĞèµÄ×Ö½ÚÊıÁ¿
+    } else {
+        if (len < ZIP_BIG_PREVLEN) {
+        // 1 ×Ö½Ú
+            p[0] = len;
+            return 1;
+        // 5 ×Ö½Ú
+        } else {
+            return zipStorePrevEntryLengthLarge(p,len);
+        }
+    }
+}
+
+/* Return the number of bytes used to encode the length of the previous
+ * entry. The length is returned by setting the var 'prevlensize'. 
+ *
+ * ½âÂë ptr Ö¸Õë£¬
+ * È¡³ö±àÂëÇ°ÖÃ½Úµã³¤¶ÈËùĞèµÄ×Ö½ÚÊı£¬²¢½«Ëü±£´æµ½ prevlensize ±äÁ¿ÖĞ¡£
  *
  * T = O(1)
  */
 #define ZIP_DECODE_PREVLENSIZE(ptr, prevlensize) do {                          \
-    if ((ptr)[0] < ZIP_BIGLEN) {                                               \
+    if ((ptr)[0] < ZIP_BIG_PREVLEN) {                                          \
         (prevlensize) = 1;                                                     \
     } else {                                                                   \
         (prevlensize) = 5;                                                     \
     }                                                                          \
-} while(0);
+} while(0)
 
-/* Decode the length of the previous element, from the perspective of the entry
- * pointed to by 'ptr'. 
+/* Return the length of the previous element, and the number of bytes that
+ * are used in order to encode the previous element length.
+ * 'ptr' must point to the prevlen prefix of an entry (that encodes the
+ * length of the previous entry in order to navigate the elements backward).
+ * The length of the previous entry is stored in 'prevlen', the number of
+ * bytes needed to encode the previous entry length are stored in
+ * 'prevlensize'. 
  *
- * è§£ç  ptr æŒ‡é’ˆï¼Œ
- * å–å‡ºç¼–ç å‰ç½®èŠ‚ç‚¹é•¿åº¦æ‰€éœ€çš„å­—èŠ‚æ•°ï¼Œ
- * å¹¶å°†è¿™ä¸ªå­—èŠ‚æ•°ä¿å­˜åˆ° prevlensize ä¸­ã€‚
+ * ½âÂë ptr Ö¸Õë£¬
+ * È¡³ö±àÂëÇ°ÖÃ½Úµã³¤¶ÈËùĞèµÄ×Ö½ÚÊı£¬
+ * ²¢½«Õâ¸ö×Ö½ÚÊı±£´æµ½ prevlensize ÖĞ¡£
  *
- * ç„¶åæ ¹æ® prevlensize ï¼Œä» ptr ä¸­å–å‡ºå‰ç½®èŠ‚ç‚¹çš„é•¿åº¦å€¼ï¼Œ
- * å¹¶å°†è¿™ä¸ªé•¿åº¦å€¼ä¿å­˜åˆ° prevlen å˜é‡ä¸­ã€‚
+ * È»ºó¸ù¾İ prevlensize £¬´Ó ptr ÖĞÈ¡³öÇ°ÖÃ½ÚµãµÄ³¤¶ÈÖµ£¬
+ * ²¢½«Õâ¸ö³¤¶ÈÖµ±£´æµ½ prevlen ±äÁ¿ÖĞ¡£
  *
  * T = O(1)
  */
 #define ZIP_DECODE_PREVLEN(ptr, prevlensize, prevlen) do {                     \
-                                                                               \
-    /* å…ˆè®¡ç®—è¢«ç¼–ç é•¿åº¦å€¼çš„å­—èŠ‚æ•° */                                           \
     ZIP_DECODE_PREVLENSIZE(ptr, prevlensize);                                  \
-                                                                               \
-    /* å†æ ¹æ®ç¼–ç å­—èŠ‚æ•°æ¥å–å‡ºé•¿åº¦å€¼ */                                         \
     if ((prevlensize) == 1) {                                                  \
         (prevlen) = (ptr)[0];                                                  \
-    } else if ((prevlensize) == 5) {                                           \
-        assert(sizeof((prevlensize)) == 4);                                    \
-        memcpy(&(prevlen), ((char*)(ptr)) + 1, 4);                             \
-        memrev32ifbe(&prevlen);                                                \
+    } else { /* prevlensize == 5 */                                            \
+        (prevlen) = ((ptr)[4] << 24) |                                         \
+                    ((ptr)[3] << 16) |                                         \
+                    ((ptr)[2] <<  8) |                                         \
+                    ((ptr)[1]);                                                \
     }                                                                          \
-} while(0);
+} while(0)
 
-/* Return the difference in number of bytes needed to store the length of the
- * previous element 'len', in the entry pointed to by 'p'. 
+/* Given a pointer 'p' to the prevlen info that prefixes an entry, this
+ * function returns the difference in number of bytes needed to encode
+ * the prevlen if the previous entry changes of size.
  *
- * è®¡ç®—ç¼–ç æ–°çš„å‰ç½®èŠ‚ç‚¹é•¿åº¦ len æ‰€éœ€çš„å­—èŠ‚æ•°ï¼Œ
- * å‡å»ç¼–ç  p åŸæ¥çš„å‰ç½®èŠ‚ç‚¹é•¿åº¦æ‰€éœ€çš„å­—èŠ‚æ•°ä¹‹å·®ã€‚
+ * So if A is the number of bytes used right now to encode the 'prevlen'
+ * field.
+ *
+ * And B is the number of bytes that are needed in order to encode the
+ * 'prevlen' if the previous element will be updated to one of size 'len'.
+ *
+ * Then the function returns B - A
+ *
+ * So the function returns a positive number if more space is needed,
+ * a negative number if less space is needed, or zero if the same space
+ * is needed. 
+ *
+ * ¼ÆËã±àÂëĞÂµÄÇ°ÖÃ½Úµã³¤¶È len ËùĞèµÄ×Ö½ÚÊı£¬
+ * ¼õÈ¥±àÂë p Ô­À´µÄÇ°ÖÃ½Úµã³¤¶ÈËùĞèµÄ×Ö½ÚÊıÖ®²î¡£
  *
  * T = O(1)
  */
-static int zipPrevLenByteDiff(unsigned char *p, unsigned int len) {
+int zipPrevLenByteDiff(unsigned char *p, unsigned int len) {
     unsigned int prevlensize;
-
-    // å–å‡ºç¼–ç åŸæ¥çš„å‰ç½®èŠ‚ç‚¹é•¿åº¦æ‰€éœ€çš„å­—èŠ‚æ•°
+    // È¡³ö±àÂëÔ­À´µÄÇ°ÖÃ½Úµã³¤¶ÈËùĞèµÄ×Ö½ÚÊı
     // T = O(1)
     ZIP_DECODE_PREVLENSIZE(p, prevlensize);
 
-    // è®¡ç®—ç¼–ç  len æ‰€éœ€çš„å­—èŠ‚æ•°ï¼Œç„¶åè¿›è¡Œå‡æ³•è¿ç®—
+    // ¼ÆËã±àÂë len ËùĞèµÄ×Ö½ÚÊı
     // T = O(1)
-    return zipPrevEncodeLength(NULL, len) - prevlensize;
-}
-
-/* Return the total number of bytes used by the entry pointed to by 'p'. 
- *
- * è¿”å›æŒ‡é’ˆ p æ‰€æŒ‡å‘çš„èŠ‚ç‚¹å ç”¨çš„å­—èŠ‚æ•°æ€»å’Œã€‚
- *
- * T = O(1)
- */
-static unsigned int zipRawEntryLength(unsigned char *p) {
-    unsigned int prevlensize, encoding, lensize, len;
-
-    // å–å‡ºç¼–ç å‰ç½®èŠ‚ç‚¹çš„é•¿åº¦æ‰€éœ€çš„å­—èŠ‚æ•°
-    // T = O(1)
-    ZIP_DECODE_PREVLENSIZE(p, prevlensize);
-
-    // å–å‡ºå½“å‰èŠ‚ç‚¹å€¼çš„ç¼–ç ç±»å‹ï¼Œç¼–ç èŠ‚ç‚¹å€¼é•¿åº¦æ‰€éœ€çš„å­—èŠ‚æ•°ï¼Œä»¥åŠèŠ‚ç‚¹å€¼çš„é•¿åº¦
-    // T = O(1)
-    ZIP_DECODE_LENGTH(p + prevlensize, encoding, lensize, len);
-
-    // è®¡ç®—èŠ‚ç‚¹å ç”¨çš„å­—èŠ‚æ•°æ€»å’Œ
-    return prevlensize + lensize + len;
+    return zipStorePrevEntryLength(NULL, len) - prevlensize;
 }
 
 /* Check if string pointed to by 'entry' can be encoded as an integer.
  * Stores the integer value in 'v' and its encoding in 'encoding'. 
  *
- * æ£€æŸ¥ entry ä¸­æŒ‡å‘çš„å­—ç¬¦ä¸²èƒ½å¦è¢«ç¼–ç ä¸ºæ•´æ•°ã€‚
+ * ¼ì²é entry ÖĞÖ¸ÏòµÄ×Ö·û´®ÄÜ·ñ±»±àÂëÎªÕûÊı¡£
  *
- * å¦‚æœå¯ä»¥çš„è¯ï¼Œ
- * å°†ç¼–ç åçš„æ•´æ•°ä¿å­˜åœ¨æŒ‡é’ˆ v çš„å€¼ä¸­ï¼Œå¹¶å°†ç¼–ç çš„æ–¹å¼ä¿å­˜åœ¨æŒ‡é’ˆ encoding çš„å€¼ä¸­ã€‚
+ * Èç¹û¿ÉÒÔµÄ»°£¬
+ * ½«±àÂëºóµÄÕûÊı±£´æÔÚÖ¸Õë v µÄÖµÖĞ£¬²¢½«±àÂëµÄ·½Ê½±£´æÔÚÖ¸Õë encoding µÄÖµÖĞ¡£
  *
- * æ³¨æ„ï¼Œè¿™é‡Œçš„ entry å’Œå‰é¢ä»£è¡¨èŠ‚ç‚¹çš„ entry ä¸æ˜¯ä¸€ä¸ªæ„æ€ã€‚
+ * ×¢Òâ£¬ÕâÀïµÄ entry ºÍÇ°Ãæ´ú±í½ÚµãµÄ entry ²»ÊÇÒ»¸öÒâË¼¡£
  *
  * T = O(N)
  */
-static int zipTryEncoding(unsigned char *entry, unsigned int entrylen, long long *v, unsigned char *encoding) {
+int zipTryEncoding(unsigned char *entry, unsigned int entrylen, long long *v, unsigned char *encoding) {
     long long value;
 
-    // å¿½ç•¥å¤ªé•¿æˆ–å¤ªçŸ­çš„å­—ç¬¦ä¸²
+    // ºöÂÔÌ«³¤»òÌ«¶ÌµÄ×Ö·û´®
     if (entrylen >= 32 || entrylen == 0) return 0;
-
-    // å°è¯•è½¬æ¢
+    // ³¢ÊÔ×ª»»
     // T = O(N)
     if (string2ll((char*)entry,entrylen,&value)) {
-
         /* Great, the string can be encoded. Check what's the smallest
          * of our encoding types that can hold this value. */
-        // è½¬æ¢æˆåŠŸï¼Œä»¥ä»å°åˆ°å¤§çš„é¡ºåºæ£€æŸ¥é€‚åˆå€¼ value çš„ç¼–ç æ–¹å¼
+        // ×ª»»³É¹¦£¬ÒÔ´ÓĞ¡µ½´óµÄË³Ğò¼ì²éÊÊºÏÖµ value µÄ±àÂë·½Ê½
         if (value >= 0 && value <= 12) {
             *encoding = ZIP_INT_IMM_MIN+value;
         } else if (value >= INT8_MIN && value <= INT8_MAX) {
@@ -636,29 +787,27 @@ static int zipTryEncoding(unsigned char *entry, unsigned int entrylen, long long
         } else {
             *encoding = ZIP_INT_64B;
         }
-
-        // è®°å½•å€¼åˆ°æŒ‡é’ˆ
+        // ¼ÇÂ¼Öµµ½Ö¸Õë
         *v = value;
 
-        // è¿”å›è½¬æ¢æˆåŠŸæ ‡è¯†
+        // ·µ»Ø×ª»»³É¹¦±êÊ¶
         return 1;
     }
 
-    // è½¬æ¢å¤±è´¥
+    // ×ª»»Ê§°Ü
     return 0;
 }
 
 /* Store integer 'value' at 'p', encoded as 'encoding' 
  * 
- * ä»¥ encoding æŒ‡å®šçš„ç¼–ç æ–¹å¼ï¼Œå°†æ•´æ•°å€¼ value å†™å…¥åˆ° p ã€‚
+ * ÒÔ encoding Ö¸¶¨µÄ±àÂë·½Ê½£¬½«ÕûÊıÖµ value Ğ´Èëµ½ p ¡£
  *
  * T = O(1)
  */
-static void zipSaveInteger(unsigned char *p, int64_t value, unsigned char encoding) {
+void zipSaveInteger(unsigned char *p, int64_t value, unsigned char encoding) {
     int16_t i16;
     int32_t i32;
     int64_t i64;
-
     if (encoding == ZIP_INT_8B) {
         ((int8_t*)p)[0] = (int8_t)value;
     } else if (encoding == ZIP_INT_16B) {
@@ -684,17 +833,16 @@ static void zipSaveInteger(unsigned char *p, int64_t value, unsigned char encodi
     }
 }
 
-/* Read integer encoded as 'encoding' from 'p'
+/* Read integer encoded as 'encoding' from 'p' 
  * 
- * ä»¥ encoding æŒ‡å®šçš„ç¼–ç æ–¹å¼ï¼Œè¯»å–å¹¶è¿”å›æŒ‡é’ˆ p ä¸­çš„æ•´æ•°å€¼ã€‚
+ * ÒÔ encoding Ö¸¶¨µÄ±àÂë·½Ê½£¬¶ÁÈ¡²¢·µ»ØÖ¸Õë p ÖĞµÄÕûÊıÖµ¡£
  *
  * T = O(1)
  */
-static int64_t zipLoadInteger(unsigned char *p, unsigned char encoding) {
+int64_t zipLoadInteger(unsigned char *p, unsigned char encoding) {
     int16_t i16;
     int32_t i32;
     int64_t i64, ret = 0;
-
     if (encoding == ZIP_INT_8B) {
         ret = ((int8_t*)p)[0];
     } else if (encoding == ZIP_INT_16B) {
@@ -719,85 +867,164 @@ static int64_t zipLoadInteger(unsigned char *p, unsigned char encoding) {
     } else {
         assert(NULL);
     }
-
     return ret;
 }
 
-/* Return a struct with all information about an entry. 
+/* Fills a struct with all information about an entry.
+ * This function is the "unsafe" alternative to the one blow.
+ * Generally, all function that return a pointer to an element in the ziplist
+ * will assert that this element is valid, so it can be freely used.
+ * Generally functions such ziplistGet assume the input pointer is already
+ * validated (since it's the return value of another function). 
  *
- * å°† p æ‰€æŒ‡å‘çš„åˆ—è¡¨èŠ‚ç‚¹çš„ä¿¡æ¯å…¨éƒ¨ä¿å­˜åˆ° zlentry ä¸­ï¼Œå¹¶è¿”å›è¯¥ zlentry ã€‚
+ * ½« p ËùÖ¸ÏòµÄÁĞ±í½ÚµãµÄĞÅÏ¢È«²¿±£´æµ½ zlentry ÖĞ£¬²¢·µ»Ø¸Ã zlentry ¡£
  *
  * T = O(1)
  */
-static zlentry zipEntry(unsigned char *p) {
+static inline void zipEntry(unsigned char *p, zlentry *e) {
+
+
+    // e.prevrawlensize ±£´æ×Å±àÂëÇ°Ò»¸ö½ÚµãµÄ³¤¶ÈËùĞèµÄ×Ö½ÚÊı
+    // e.prevrawlen ±£´æ×ÅÇ°Ò»¸ö½ÚµãµÄ³¤¶È
+    // T = O(1)
+    ZIP_DECODE_PREVLEN(p, e->prevrawlensize, e->prevrawlen);
+    ZIP_ENTRY_ENCODING(p + e->prevrawlensize, e->encoding);
+
+    // p + e.prevrawlensize ½«Ö¸ÕëÒÆ¶¯µ½ÁĞ±í½Úµã±¾Éí
+    // e.encoding ±£´æ×Å½ÚµãÖµµÄ±àÂëÀàĞÍ
+    // e.lensize ±£´æ×Å±àÂë½ÚµãÖµ³¤¶ÈËùĞèµÄ×Ö½ÚÊı
+    // e.len ±£´æ×Å½ÚµãÖµµÄ³¤¶È
+    // T = O(1)
+    ZIP_DECODE_LENGTH(p + e->prevrawlensize, e->encoding, e->lensize, e->len);
+    assert(e->lensize != 0); /* check that encoding was valid. */
+    // ¼ÆËãÍ·½áµãµÄ×Ö½ÚÊı
+    e->headersize = e->prevrawlensize + e->lensize;
+    // ¼ÇÂ¼Ö¸Õë
+    e->p = p;
+}
+
+/* Fills a struct with all information about an entry.
+ * This function is safe to use on untrusted pointers, it'll make sure not to
+ * try to access memory outside the ziplist payload.
+ * Returns 1 if the entry is valid, and 0 otherwise. */
+static inline int zipEntrySafe(unsigned char* zl, size_t zlbytes, unsigned char *p, zlentry *e, int validate_prevlen) {
+    unsigned char *zlfirst = zl + ZIPLIST_HEADER_SIZE;
+    unsigned char *zllast = zl + zlbytes - ZIPLIST_END_SIZE;
+#define OUT_OF_RANGE(p) (unlikely((p) < zlfirst || (p) > zllast))
+
+    /* If threre's no possibility for the header to reach outside the ziplist,
+     * take the fast path. (max lensize and prevrawlensize are both 5 bytes) */
+    if (p >= zlfirst && p + 10 < zllast) {
+        ZIP_DECODE_PREVLEN(p, e->prevrawlensize, e->prevrawlen);
+        ZIP_ENTRY_ENCODING(p + e->prevrawlensize, e->encoding);
+        ZIP_DECODE_LENGTH(p + e->prevrawlensize, e->encoding, e->lensize, e->len);
+        e->headersize = e->prevrawlensize + e->lensize;
+        e->p = p;
+        /* We didn't call ZIP_ASSERT_ENCODING, so we check lensize was set to 0. */
+        if (unlikely(e->lensize == 0))
+            return 0;
+        /* Make sure the entry doesn't rech outside the edge of the ziplist */
+        if (OUT_OF_RANGE(p + e->headersize + e->len))
+            return 0;
+        /* Make sure prevlen doesn't rech outside the edge of the ziplist */
+        if (validate_prevlen && OUT_OF_RANGE(p - e->prevrawlen))
+            return 0;
+        return 1;
+    }
+
+    /* Make sure the pointer doesn't rech outside the edge of the ziplist */
+    if (OUT_OF_RANGE(p))
+        return 0;
+
+    /* Make sure the encoded prevlen header doesn't reach outside the allocation */
+    ZIP_DECODE_PREVLENSIZE(p, e->prevrawlensize);
+    if (OUT_OF_RANGE(p + e->prevrawlensize))
+        return 0;
+
+    /* Make sure encoded entry header is valid. */
+    ZIP_ENTRY_ENCODING(p + e->prevrawlensize, e->encoding);
+    e->lensize = zipEncodingLenSize(e->encoding);
+    if (unlikely(e->lensize == ZIP_ENCODING_SIZE_INVALID))
+        return 0;
+
+    /* Make sure the encoded entry header doesn't reach outside the allocation */
+    if (OUT_OF_RANGE(p + e->prevrawlensize + e->lensize))
+        return 0;
+
+    /* Decode the prevlen and entry len headers. */
+    ZIP_DECODE_PREVLEN(p, e->prevrawlensize, e->prevrawlen);
+    ZIP_DECODE_LENGTH(p + e->prevrawlensize, e->encoding, e->lensize, e->len);
+    e->headersize = e->prevrawlensize + e->lensize;
+
+    /* Make sure the entry doesn't rech outside the edge of the ziplist */
+    if (OUT_OF_RANGE(p + e->headersize + e->len))
+        return 0;
+
+    /* Make sure prevlen doesn't rech outside the edge of the ziplist */
+    if (validate_prevlen && OUT_OF_RANGE(p - e->prevrawlen))
+        return 0;
+
+    e->p = p;
+    return 1;
+#undef OUT_OF_RANGE
+}
+
+/* Return the total number of bytes used by the entry pointed to by 'p'. */
+static inline unsigned int zipRawEntryLengthSafe(unsigned char* zl, size_t zlbytes, unsigned char *p) {
     zlentry e;
+    assert(zipEntrySafe(zl, zlbytes, p, &e, 0));
+    return e.headersize + e.len;
+}
 
-    // e.prevrawlensize ä¿å­˜ç€ç¼–ç å‰ä¸€ä¸ªèŠ‚ç‚¹çš„é•¿åº¦æ‰€éœ€çš„å­—èŠ‚æ•°
-    // e.prevrawlen ä¿å­˜ç€å‰ä¸€ä¸ªèŠ‚ç‚¹çš„é•¿åº¦
-    // T = O(1)
-    ZIP_DECODE_PREVLEN(p, e.prevrawlensize, e.prevrawlen);
+/* Return the total number of bytes used by the entry pointed to by 'p'. */
+static inline unsigned int zipRawEntryLength(unsigned char *p) {
+    zlentry e;
+    zipEntry(p, &e);
+    return e.headersize + e.len;
+}
 
-    // p + e.prevrawlensize å°†æŒ‡é’ˆç§»åŠ¨åˆ°åˆ—è¡¨èŠ‚ç‚¹æœ¬èº«
-    // e.encoding ä¿å­˜ç€èŠ‚ç‚¹å€¼çš„ç¼–ç ç±»å‹
-    // e.lensize ä¿å­˜ç€ç¼–ç èŠ‚ç‚¹å€¼é•¿åº¦æ‰€éœ€çš„å­—èŠ‚æ•°
-    // e.len ä¿å­˜ç€èŠ‚ç‚¹å€¼çš„é•¿åº¦
-    // T = O(1)
-    ZIP_DECODE_LENGTH(p + e.prevrawlensize, e.encoding, e.lensize, e.len);
-
-    // è®¡ç®—å¤´ç»“ç‚¹çš„å­—èŠ‚æ•°
-    e.headersize = e.prevrawlensize + e.lensize;
-
-    // è®°å½•æŒ‡é’ˆ
-    e.p = p;
-
-    return e;
+/* Validate that the entry doesn't reach outside the ziplist allocation. */
+static inline void zipAssertValidEntry(unsigned char* zl, size_t zlbytes, unsigned char *p) {
+    zlentry e;
+    assert(zipEntrySafe(zl, zlbytes, p, &e, 1));
 }
 
 /* Create a new empty ziplist. 
  *
- * åˆ›å»ºå¹¶è¿”å›ä¸€ä¸ªæ–°çš„ ziplist 
+ * ´´½¨²¢·µ»ØÒ»¸öĞÂµÄ ziplist 
  *
  * T = O(1)
  */
 unsigned char *ziplistNew(void) {
 
-    // ZIPLIST_HEADER_SIZE æ˜¯ ziplist è¡¨å¤´çš„å¤§å°
-    // 1 å­—èŠ‚æ˜¯è¡¨æœ«ç«¯ ZIP_END çš„å¤§å°
-    unsigned int bytes = ZIPLIST_HEADER_SIZE+1;
-
-    // ä¸ºè¡¨å¤´å’Œè¡¨æœ«ç«¯åˆ†é…ç©ºé—´
+    // ZIPLIST_HEADER_SIZE ÊÇ ziplist ±íÍ·µÄ´óĞ¡
+    // 1 ×Ö½ÚÊÇ±íÄ©¶Ë ZIP_END µÄ´óĞ¡
+    unsigned int bytes = ZIPLIST_HEADER_SIZE+ZIPLIST_END_SIZE;
     unsigned char *zl = zmalloc(bytes);
 
-    // åˆå§‹åŒ–è¡¨å±æ€§
+    // ÉèÖÃ±íÄ©¶Ë
     ZIPLIST_BYTES(zl) = intrev32ifbe(bytes);
     ZIPLIST_TAIL_OFFSET(zl) = intrev32ifbe(ZIPLIST_HEADER_SIZE);
     ZIPLIST_LENGTH(zl) = 0;
-
-    // è®¾ç½®è¡¨æœ«ç«¯
     zl[bytes-1] = ZIP_END;
-
     return zl;
 }
 
 /* Resize the ziplist. 
  *
- * è°ƒæ•´ ziplist çš„å¤§å°ä¸º len å­—èŠ‚ã€‚
+ * µ÷Õû ziplist µÄ´óĞ¡Îª len ×Ö½Ú¡£
  *
- * å½“ ziplist åŸæœ‰çš„å¤§å°å°äº len æ—¶ï¼Œæ‰©å±• ziplist ä¸ä¼šæ”¹å˜ ziplist åŸæœ‰çš„å…ƒç´ ã€‚
+ * µ± ziplist Ô­ÓĞµÄ´óĞ¡Ğ¡ÓÚ len Ê±£¬À©Õ¹ ziplist ²»»á¸Ä±ä ziplist Ô­ÓĞµÄÔªËØ¡£
  *
  * T = O(N)
  */
-static unsigned char *ziplistResize(unsigned char *zl, unsigned int len) {
-
-    // ç”¨ zrealloc ï¼Œæ‰©å±•æ—¶ä¸æ”¹å˜ç°æœ‰å…ƒç´ 
+unsigned char *ziplistResize(unsigned char *zl, unsigned int len) {
+    // ÓÃ zrealloc £¬À©Õ¹Ê±²»¸Ä±äÏÖÓĞÔªËØ
     zl = zrealloc(zl,len);
-
-    // æ›´æ–° bytes å±æ€§
+    // ¸üĞÂ bytes ÊôĞÔ
     ZIPLIST_BYTES(zl) = intrev32ifbe(len);
-
-    // é‡æ–°è®¾ç½®è¡¨æœ«ç«¯
+    // ÖØĞÂÉèÖÃ±íÄ©¶Ë
     zl[len-1] = ZIP_END;
-
     return zl;
 }
 
@@ -809,17 +1036,17 @@ static unsigned char *ziplistResize(unsigned char *zl, unsigned int len) {
  * causes a realloc and memmove). However, encoding the prevlen may require
  * that this entry is grown as well. This effect may cascade throughout
  * the ziplist when there are consecutive entries with a size close to
- * ZIP_BIGLEN, so we need to check that the prevlen can be encoded in every
- * consecutive entry.
+ * ZIP_BIG_PREVLEN, so we need to check that the prevlen can be encoded in
+ * every consecutive entry.
  *
- * å½“å°†ä¸€ä¸ªæ–°èŠ‚ç‚¹æ·»åŠ åˆ°æŸä¸ªèŠ‚ç‚¹ä¹‹å‰çš„æ—¶å€™ï¼Œ
- * å¦‚æœåŸèŠ‚ç‚¹çš„ header ç©ºé—´ä¸è¶³ä»¥ä¿å­˜æ–°èŠ‚ç‚¹çš„é•¿åº¦ï¼Œ
- * é‚£ä¹ˆå°±éœ€è¦å¯¹åŸèŠ‚ç‚¹çš„ header ç©ºé—´è¿›è¡Œæ‰©å±•ï¼ˆä» 1 å­—èŠ‚æ‰©å±•åˆ° 5 å­—èŠ‚ï¼‰ã€‚
+ * µ±½«Ò»¸öĞÂ½ÚµãÌí¼Óµ½Ä³¸ö½ÚµãÖ®Ç°µÄÊ±ºò£¬
+ * Èç¹ûÔ­½ÚµãµÄ header ¿Õ¼ä²»×ãÒÔ±£´æĞÂ½ÚµãµÄ³¤¶È£¬
+ * ÄÇÃ´¾ÍĞèÒª¶ÔÔ­½ÚµãµÄ header ¿Õ¼ä½øĞĞÀ©Õ¹£¨´Ó 1 ×Ö½ÚÀ©Õ¹µ½ 5 ×Ö½Ú£©¡£
  *
- * ä½†æ˜¯ï¼Œå½“å¯¹åŸèŠ‚ç‚¹è¿›è¡Œæ‰©å±•ä¹‹åï¼ŒåŸèŠ‚ç‚¹çš„ä¸‹ä¸€ä¸ªèŠ‚ç‚¹çš„ prevlen å¯èƒ½å‡ºç°ç©ºé—´ä¸è¶³ï¼Œ
- * è¿™ç§æƒ…å†µåœ¨å¤šä¸ªè¿ç»­èŠ‚ç‚¹çš„é•¿åº¦éƒ½æ¥è¿‘ ZIP_BIGLEN æ—¶å¯èƒ½å‘ç”Ÿã€‚
+ * µ«ÊÇ£¬µ±¶ÔÔ­½Úµã½øĞĞÀ©Õ¹Ö®ºó£¬Ô­½ÚµãµÄÏÂÒ»¸ö½ÚµãµÄ prevlen ¿ÉÄÜ³öÏÖ¿Õ¼ä²»×ã£¬
+ * ÕâÖÖÇé¿öÔÚ¶à¸öÁ¬Ğø½ÚµãµÄ³¤¶È¶¼½Ó½ü ZIP_BIGLEN Ê±¿ÉÄÜ·¢Éú¡£
  *
- * è¿™ä¸ªå‡½æ•°å°±ç”¨äºæ£€æŸ¥å¹¶ä¿®å¤åç»­èŠ‚ç‚¹çš„ç©ºé—´é—®é¢˜ã€‚
+ * Õâ¸öº¯Êı¾ÍÓÃÓÚ¼ì²é²¢ĞŞ¸´ºóĞø½ÚµãµÄ¿Õ¼äÎÊÌâ¡£
  *
  * Note that this effect can also happen in reverse, where the bytes required
  * to encode the prevlen field can shrink. This effect is deliberately ignored,
@@ -828,372 +1055,417 @@ static unsigned char *ziplistResize(unsigned char *zl, unsigned int len) {
  * field is allowed to stay larger than necessary, because a large prevlen
  * field implies the ziplist is holding large entries anyway.
  *
- * åè¿‡æ¥è¯´ï¼Œ
- * å› ä¸ºèŠ‚ç‚¹çš„é•¿åº¦å˜å°è€Œå¼•èµ·çš„è¿ç»­ç¼©å°ä¹Ÿæ˜¯å¯èƒ½å‡ºç°çš„ï¼Œ
- * ä¸è¿‡ï¼Œä¸ºäº†é¿å…æ‰©å±•-ç¼©å°-æ‰©å±•-ç¼©å°è¿™æ ·çš„æƒ…å†µåå¤å‡ºç°ï¼ˆflappingï¼ŒæŠ–åŠ¨ï¼‰ï¼Œ
- * æˆ‘ä»¬ä¸å¤„ç†è¿™ç§æƒ…å†µï¼Œè€Œæ˜¯ä»»ç”± prevlen æ¯”æ‰€éœ€çš„é•¿åº¦æ›´é•¿ã€‚
+ * ·´¹ıÀ´Ëµ£¬
+ * ÒòÎª½ÚµãµÄ³¤¶È±äĞ¡¶øÒıÆğµÄÁ¬ĞøËõĞ¡Ò²ÊÇ¿ÉÄÜ³öÏÖµÄ£¬
+ * ²»¹ı£¬ÎªÁË±ÜÃâÀ©Õ¹-ËõĞ¡-À©Õ¹-ËõĞ¡ÕâÑùµÄÇé¿ö·´¸´³öÏÖ£¨flapping£¬¶¶¶¯£©£¬
+ * ÎÒÃÇ²»´¦ÀíÕâÖÖÇé¿ö£¬¶øÊÇÈÎÓÉ prevlen ±ÈËùĞèµÄ³¤¶È¸ü³¤¡£
  
  * The pointer "p" points to the first entry that does NOT need to be
  * updated, i.e. consecutive fields MAY need an update. 
  *
- * æ³¨æ„ï¼Œç¨‹åºçš„æ£€æŸ¥æ˜¯é’ˆå¯¹ p çš„åç»­èŠ‚ç‚¹ï¼Œè€Œä¸æ˜¯ p æ‰€æŒ‡å‘çš„èŠ‚ç‚¹ã€‚
- * å› ä¸ºèŠ‚ç‚¹ p åœ¨ä¼ å…¥ä¹‹å‰å·²ç»å®Œæˆäº†æ‰€éœ€çš„ç©ºé—´æ‰©å±•å·¥ä½œã€‚
+ * ×¢Òâ£¬³ÌĞòµÄ¼ì²éÊÇÕë¶Ô p µÄºóĞø½Úµã£¬¶ø²»ÊÇ p ËùÖ¸ÏòµÄ½Úµã¡£
+ * ÒòÎª½Úµã p ÔÚ´«ÈëÖ®Ç°ÒÑ¾­Íê³ÉÁËËùĞèµÄ¿Õ¼äÀ©Õ¹¹¤×÷¡£
  *
  * T = O(N^2)
  */
-static unsigned char *__ziplistCascadeUpdate(unsigned char *zl, unsigned char *p) {
-    size_t curlen = intrev32ifbe(ZIPLIST_BYTES(zl)), rawlen, rawlensize;
-    size_t offset, noffset, extra;
-    unsigned char *np;
-    zlentry cur, next;
+unsigned char *__ziplistCascadeUpdate(unsigned char *zl, unsigned char *p) {
+    zlentry cur;
+    size_t prevlen, prevlensize, prevoffset; /* Informat of the last changed entry. */
+    size_t firstentrylen; /* Used to handle insert at head. */
+    size_t rawlen, curlen = intrev32ifbe(ZIPLIST_BYTES(zl));
+    size_t extra = 0, cnt = 0, offset;
+    size_t delta = 4; /* Extra bytes needed to update a entry's prevlen (5-1). */
+    unsigned char *tail = zl + intrev32ifbe(ZIPLIST_TAIL_OFFSET(zl));
 
+    /* Empty ziplist */
+    if (p[0] == ZIP_END) return zl;
+
+ // ½« p ËùÖ¸ÏòµÄ½ÚµãµÄĞÅÏ¢±£´æµ½ cur ½á¹¹ÖĞ
+    zipEntry(p, &cur); /* no need for "safe" variant since the input pointer was validated by the function that returned it. */
+    // µ±Ç°½ÚµãµÄ³¤¶È
+	firstentrylen = prevlen = cur.headersize + cur.len;
+        // ¼ÆËã±àÂëµ±Ç°½ÚµãµÄ³¤¶ÈËùĞèµÄ×Ö½ÚÊı
+        // T = O(1)
+    prevlensize = zipStorePrevEntryLength(NULL, prevlen);
+    prevoffset = p - zl;
+    p += prevlen;
+
+    /* Iterate ziplist to find out how many extra bytes do we need to update it. */
     // T = O(N^2)
     while (p[0] != ZIP_END) {
-
-        // å°† p æ‰€æŒ‡å‘çš„èŠ‚ç‚¹çš„ä¿¡æ¯ä¿å­˜åˆ° cur ç»“æ„ä¸­
-        cur = zipEntry(p);
-        // å½“å‰èŠ‚ç‚¹çš„é•¿åº¦
-        rawlen = cur.headersize + cur.len;
-        // è®¡ç®—ç¼–ç å½“å‰èŠ‚ç‚¹çš„é•¿åº¦æ‰€éœ€çš„å­—èŠ‚æ•°
-        // T = O(1)
-        rawlensize = zipPrevEncodeLength(NULL,rawlen);
-
-        /* Abort if there is no next entry. */
-        // å¦‚æœå·²ç»æ²¡æœ‰åç»­ç©ºé—´éœ€è¦æ›´æ–°äº†ï¼Œè·³å‡º
-        if (p[rawlen] == ZIP_END) break;
-
-        // å–å‡ºåç»­èŠ‚ç‚¹çš„ä¿¡æ¯ï¼Œä¿å­˜åˆ° next ç»“æ„ä¸­
-        // T = O(1)
-        next = zipEntry(p+rawlen);
+        assert(zipEntrySafe(zl, curlen, p, &cur, 0));
 
         /* Abort when "prevlen" has not changed. */
-        // åç»­èŠ‚ç‚¹ç¼–ç å½“å‰èŠ‚ç‚¹çš„ç©ºé—´å·²ç»è¶³å¤Ÿï¼Œæ— é¡»å†è¿›è¡Œä»»ä½•å¤„ç†ï¼Œè·³å‡º
-        // å¯ä»¥è¯æ˜ï¼Œåªè¦é‡åˆ°ä¸€ä¸ªç©ºé—´è¶³å¤Ÿçš„èŠ‚ç‚¹ï¼Œ
-        // é‚£ä¹ˆè¿™ä¸ªèŠ‚ç‚¹ä¹‹åçš„æ‰€æœ‰èŠ‚ç‚¹çš„ç©ºé—´éƒ½æ˜¯è¶³å¤Ÿçš„
-        if (next.prevrawlen == rawlen) break;
+        // ºóĞø½Úµã±àÂëµ±Ç°½ÚµãµÄ¿Õ¼äÒÑ¾­×ã¹»£¬ÎŞĞëÔÙ½øĞĞÈÎºÎ´¦Àí£¬Ìø³ö
+        // ¿ÉÒÔÖ¤Ã÷£¬Ö»ÒªÓöµ½Ò»¸ö¿Õ¼ä×ã¹»µÄ½Úµã£¬
+        // ÄÇÃ´Õâ¸ö½ÚµãÖ®ºóµÄËùÓĞ½ÚµãµÄ¿Õ¼ä¶¼ÊÇ×ã¹»µÄ
+        if (cur.prevrawlen == prevlen) break;
 
-        if (next.prevrawlensize < rawlensize) {
-
-            /* The "prevlen" field of "next" needs more bytes to hold
-             * the raw length of "cur". */
-            // æ‰§è¡Œåˆ°è¿™é‡Œï¼Œè¡¨ç¤º next ç©ºé—´çš„å¤§å°ä¸è¶³ä»¥ç¼–ç  cur çš„é•¿åº¦
-            // æ‰€ä»¥ç¨‹åºéœ€è¦å¯¹ next èŠ‚ç‚¹çš„ï¼ˆheader éƒ¨åˆ†ï¼‰ç©ºé—´è¿›è¡Œæ‰©å±•
-
-            // è®°å½• p çš„åç§»é‡
-            offset = p-zl;
-            // è®¡ç®—éœ€è¦å¢åŠ çš„èŠ‚ç‚¹æ•°é‡
-            extra = rawlensize-next.prevrawlensize;
-            // æ‰©å±• zl çš„å¤§å°
-            // T = O(N)
-            zl = ziplistResize(zl,curlen+extra);
-            // è¿˜åŸæŒ‡é’ˆ p
-            p = zl+offset;
-
-            /* Current pointer and offset for next element. */
-            // è®°å½•ä¸‹ä¸€èŠ‚ç‚¹çš„åç§»é‡
-            np = p+rawlen;
-            noffset = np-zl;
-
-            /* Update tail offset when next element is not the tail element. */
-            // å½“ next èŠ‚ç‚¹ä¸æ˜¯è¡¨å°¾èŠ‚ç‚¹æ—¶ï¼Œæ›´æ–°åˆ—è¡¨åˆ°è¡¨å°¾èŠ‚ç‚¹çš„åç§»é‡
-            // 
-            // ä¸ç”¨æ›´æ–°çš„æƒ…å†µï¼ˆnext ä¸ºè¡¨å°¾èŠ‚ç‚¹ï¼‰ï¼š
-            //
-            // |     | next |      ==>    |     | new next          |
-            //       ^                          ^
-            //       |                          |
-            //     tail                        tail
-            //
-            // éœ€è¦æ›´æ–°çš„æƒ…å†µï¼ˆnext ä¸æ˜¯è¡¨å°¾èŠ‚ç‚¹ï¼‰ï¼š
-            //
-            // | next |     |   ==>     | new next          |     |
-            //        ^                        ^
-            //        |                        |
-            //    old tail                 old tail
-            // 
-            // æ›´æ–°ä¹‹åï¼š
-            //
-            // | new next          |     |
-            //                     ^
-            //                     |
-            //                  new tail
-            // T = O(1)
-            if ((zl+intrev32ifbe(ZIPLIST_TAIL_OFFSET(zl))) != np) {
-                ZIPLIST_TAIL_OFFSET(zl) =
-                    intrev32ifbe(intrev32ifbe(ZIPLIST_TAIL_OFFSET(zl))+extra);
-            }
-
-            /* Move the tail to the back. */
-            // å‘åç§»åŠ¨ cur èŠ‚ç‚¹ä¹‹åçš„æ•°æ®ï¼Œä¸º cur çš„æ–° header è…¾å‡ºç©ºé—´
-            //
-            // ç¤ºä¾‹ï¼š
-            //
-            // | header | value |  ==>  | header |    | value |  ==>  | header      | value |
-            //                                   |<-->|
-            //                            ä¸ºæ–° header è…¾å‡ºçš„ç©ºé—´
-            // T = O(N)
-            memmove(np+rawlensize,
-                np+next.prevrawlensize,
-                curlen-noffset-next.prevrawlensize-1);
-            // å°†æ–°çš„å‰ä¸€èŠ‚ç‚¹é•¿åº¦å€¼ç¼–ç è¿›æ–°çš„ next èŠ‚ç‚¹çš„ header
-            // T = O(1)
-            zipPrevEncodeLength(np,rawlen);
-
-            /* Advance the cursor */
-            // ç§»åŠ¨æŒ‡é’ˆï¼Œç»§ç»­å¤„ç†ä¸‹ä¸ªèŠ‚ç‚¹
-            p += rawlen;
-            curlen += extra;
-        } else {
-            if (next.prevrawlensize > rawlensize) {
-                /* This would result in shrinking, which we want to avoid.
-                 * So, set "rawlen" in the available bytes. */
-                // æ‰§è¡Œåˆ°è¿™é‡Œï¼Œè¯´æ˜ next èŠ‚ç‚¹ç¼–ç å‰ç½®èŠ‚ç‚¹çš„ header ç©ºé—´æœ‰ 5 å­—èŠ‚
-                // è€Œç¼–ç  rawlen åªéœ€è¦ 1 å­—èŠ‚
-                // ä½†æ˜¯ç¨‹åºä¸ä¼šå¯¹ next è¿›è¡Œç¼©å°ï¼Œ
-                // æ‰€ä»¥è¿™é‡Œåªå°† rawlen å†™å…¥ 5 å­—èŠ‚çš„ header ä¸­å°±ç®—äº†ã€‚
-                // T = O(1)
-                zipPrevEncodeLengthForceLarge(p+rawlen,rawlen);
+        /* Abort when entry's "prevlensize" is big enough. */
+        if (cur.prevrawlensize >= prevlensize) {
+            if (cur.prevrawlensize == prevlensize) {
+                zipStorePrevEntryLength(p, prevlen);
             } else {
-                // è¿è¡Œåˆ°è¿™é‡Œï¼Œ
-                // è¯´æ˜ cur èŠ‚ç‚¹çš„é•¿åº¦æ­£å¥½å¯ä»¥ç¼–ç åˆ° next èŠ‚ç‚¹çš„ header ä¸­
-                // T = O(1)
-                zipPrevEncodeLength(p+rawlen,rawlen);
+                /* This would result in shrinking, which we want to avoid.
+                 * So, set "prevlen" in the available bytes. */
+                zipStorePrevEntryLengthLarge(p, prevlen);
             }
-
-            /* Stop here, as the raw length of "next" has not changed. */
             break;
         }
+
+        /* cur.prevrawlen means cur is the former head entry. */
+        assert(cur.prevrawlen == 0 || cur.prevrawlen + delta == prevlen);
+
+        /* Update prev entry's info and advance the cursor. */
+        rawlen = cur.headersize + cur.len;
+        prevlen = rawlen + delta; 
+        prevlensize = zipStorePrevEntryLength(NULL, prevlen);
+        prevoffset = p - zl;
+        p += rawlen;
+        extra += delta;
+        cnt++;
     }
 
+    /* Extra bytes is zero all update has been done(or no need to update). */
+    if (extra == 0) return zl;
+
+    /* Update tail offset after loop. */
+
+  // µ± next ½Úµã²»ÊÇ±íÎ²½ÚµãÊ±£¬¸üĞÂÁĞ±íµ½±íÎ²½ÚµãµÄÆ«ÒÆÁ¿
+    // 
+    // ²»ÓÃ¸üĞÂµÄÇé¿ö£¨next Îª±íÎ²½Úµã£©£º
+    //
+    // |     | next |      ==>    |     | new next          |
+    //       ^                          ^
+    //       |                          |
+    //     tail                        tail
+    //
+    // ĞèÒª¸üĞÂµÄÇé¿ö£¨next ²»ÊÇ±íÎ²½Úµã£©£º
+    //
+    // | next |     |   ==>     | new next          |     |
+    //        ^                        ^
+    //        |                        |
+    //    old tail                 old tail
+    // 
+    // ¸üĞÂÖ®ºó£º
+    //
+    // | new next          |     |
+    //                     ^
+    //                     |
+    //                  new tail
+    // T = O(1)
+    if (tail == zl + prevoffset) {
+        /* When the the last entry we need to update is also the tail, update tail offset
+         * unless this is the only entry that was updated (so the tail offset didn't change). */
+        if (extra - delta != 0) {
+            ZIPLIST_TAIL_OFFSET(zl) =
+                intrev32ifbe(intrev32ifbe(ZIPLIST_TAIL_OFFSET(zl))+extra-delta);
+        }
+    } else {
+        /* Update the tail offset in cases where the last entry we updated is not the tail. */
+        ZIPLIST_TAIL_OFFSET(zl) =
+            intrev32ifbe(intrev32ifbe(ZIPLIST_TAIL_OFFSET(zl))+extra);
+    }
+
+    /* Now "p" points at the first unchanged byte in original ziplist,
+     * move data after that to new ziplist. */
+    offset = p - zl;
+    zl = ziplistResize(zl, curlen + extra);
+    p = zl + offset;
+
+    // ÏòºóÒÆ¶¯ cur ½ÚµãÖ®ºóµÄÊı¾İ£¬Îª cur µÄĞÂ header ÌÚ³ö¿Õ¼ä
+    //
+    // Ê¾Àı£º
+    //
+    // | header | value |  ==>  | header |    | value |  ==>  | header      | value |
+    //                                   |<-->|
+    //                            ÎªĞÂ header ÌÚ³öµÄ¿Õ¼ä
+    // T = O(N)
+    memmove(p + extra, p, curlen - offset - 1);
+    p += extra;
+
+    /* Iterate all entries that need to be updated tail to head. */
+    while (cnt) {
+        zipEntry(zl + prevoffset, &cur); /* no need for "safe" variant since we already iterated on all these entries above. */
+        rawlen = cur.headersize + cur.len;
+        /* Move entry to tail and reset prevlen. */
+        memmove(p - (rawlen - cur.prevrawlensize), 
+                zl + prevoffset + cur.prevrawlensize, 
+                rawlen - cur.prevrawlensize);
+        p -= (rawlen + delta);
+        if (cur.prevrawlen == 0) {
+                // ÔËĞĞµ½ÕâÀï£¬
+                // ËµÃ÷ cur ½ÚµãµÄ³¤¶ÈÕıºÃ¿ÉÒÔ±àÂëµ½ next ½ÚµãµÄ header ÖĞ
+                // T = O(1)
+            /* "cur" is the previous head entry, update its prevlen with firstentrylen. */
+            zipStorePrevEntryLength(p, firstentrylen);
+        } else {
+            /* An entry's prevlen can only increment 4 bytes. */
+                // Ö´ĞĞµ½ÕâÀï£¬ËµÃ÷ next ½Úµã±àÂëÇ°ÖÃ½ÚµãµÄ header ¿Õ¼äÓĞ 5 ×Ö½Ú
+                // ¶ø±àÂë rawlen Ö»ĞèÒª 1 ×Ö½Ú
+                // µ«ÊÇ³ÌĞò²»»á¶Ô next ½øĞĞËõĞ¡£¬
+                // ËùÒÔÕâÀïÖ»½« rawlen Ğ´Èë 5 ×Ö½ÚµÄ header ÖĞ¾ÍËãÁË¡£
+                // T = O(1)
+            zipStorePrevEntryLength(p, cur.prevrawlen+delta);
+        }
+        /* Foward to previous entry. */
+        prevoffset -= cur.prevrawlen;
+        cnt--;
+    }
     return zl;
 }
 
 /* Delete "num" entries, starting at "p". Returns pointer to the ziplist. 
  *
- * ä»ä½ç½® p å¼€å§‹ï¼Œè¿ç»­åˆ é™¤ num ä¸ªèŠ‚ç‚¹ã€‚
+ * ´ÓÎ»ÖÃ p ¿ªÊ¼£¬Á¬ĞøÉ¾³ı num ¸ö½Úµã¡£
  *
- * å‡½æ•°çš„è¿”å›å€¼ä¸ºå¤„ç†åˆ é™¤æ“ä½œä¹‹åçš„ ziplist ã€‚
+ * º¯ÊıµÄ·µ»ØÖµÎª´¦ÀíÉ¾³ı²Ù×÷Ö®ºóµÄ ziplist ¡£
  *
  * T = O(N^2)
  */
-static unsigned char *__ziplistDelete(unsigned char *zl, unsigned char *p, unsigned int num) {
+unsigned char *__ziplistDelete(unsigned char *zl, unsigned char *p, unsigned int num) {
     unsigned int i, totlen, deleted = 0;
     size_t offset;
     int nextdiff = 0;
     zlentry first, tail;
+    size_t zlbytes = intrev32ifbe(ZIPLIST_BYTES(zl));
 
-    // è®¡ç®—è¢«åˆ é™¤èŠ‚ç‚¹æ€»å…±å ç”¨çš„å†…å­˜å­—èŠ‚æ•°
-    // ä»¥åŠè¢«åˆ é™¤èŠ‚ç‚¹çš„æ€»ä¸ªæ•°
+    // ¼ÆËã±»É¾³ı½Úµã×Ü¹²Õ¼ÓÃµÄÄÚ´æ×Ö½ÚÊı
+    // ÒÔ¼°±»É¾³ı½ÚµãµÄ×Ü¸öÊı
     // T = O(N)
-    first = zipEntry(p);
+    zipEntry(p, &first); /* no need for "safe" variant since the input pointer was validated by the function that returned it. */
     for (i = 0; p[0] != ZIP_END && i < num; i++) {
-        p += zipRawEntryLength(p);
+        p += zipRawEntryLengthSafe(zl, zlbytes, p);
         deleted++;
     }
 
-    // totlen æ˜¯æ‰€æœ‰è¢«åˆ é™¤èŠ‚ç‚¹æ€»å…±å ç”¨çš„å†…å­˜å­—èŠ‚æ•°
-    totlen = p-first.p;
+    assert(p >= first.p);
+    // totlen ÊÇËùÓĞ±»É¾³ı½Úµã×Ü¹²Õ¼ÓÃµÄÄÚ´æ×Ö½ÚÊı
+    totlen = p-first.p; /* Bytes taken by the element(s) to delete. */
     if (totlen > 0) {
+        uint32_t set_tail;
         if (p[0] != ZIP_END) {
-
-            // æ‰§è¡Œè¿™é‡Œï¼Œè¡¨ç¤ºè¢«åˆ é™¤èŠ‚ç‚¹ä¹‹åä»ç„¶æœ‰èŠ‚ç‚¹å­˜åœ¨
-
+            // Ö´ĞĞÕâÀï£¬±íÊ¾±»É¾³ı½ÚµãÖ®ºóÈÔÈ»ÓĞ½Úµã´æÔÚ
             /* Storing `prevrawlen` in this entry may increase or decrease the
              * number of bytes required compare to the current `prevrawlen`.
              * There always is room to store this, because it was previously
              * stored by an entry that is now being deleted. */
-            // å› ä¸ºä½äºè¢«åˆ é™¤èŒƒå›´ä¹‹åçš„ç¬¬ä¸€ä¸ªèŠ‚ç‚¹çš„ header éƒ¨åˆ†çš„å¤§å°
-            // å¯èƒ½å®¹çº³ä¸äº†æ–°çš„å‰ç½®èŠ‚ç‚¹ï¼Œæ‰€ä»¥éœ€è¦è®¡ç®—æ–°æ—§å‰ç½®èŠ‚ç‚¹ä¹‹é—´çš„å­—èŠ‚æ•°å·®
+            // ÒòÎªÎ»ÓÚ±»É¾³ı·¶Î§Ö®ºóµÄµÚÒ»¸ö½ÚµãµÄ header ²¿·ÖµÄ´óĞ¡
+            // ¿ÉÄÜÈİÄÉ²»ÁËĞÂµÄÇ°ÖÃ½Úµã£¬ËùÒÔĞèÒª¼ÆËãĞÂ¾ÉÇ°ÖÃ½ÚµãÖ®¼äµÄ×Ö½ÚÊı²î
             // T = O(1)
             nextdiff = zipPrevLenByteDiff(p,first.prevrawlen);
-            // å¦‚æœæœ‰éœ€è¦çš„è¯ï¼Œå°†æŒ‡é’ˆ p åé€€ nextdiff å­—èŠ‚ï¼Œä¸ºæ–° header ç©ºå‡ºç©ºé—´
+            // Èç¹ûÓĞĞèÒªµÄ»°£¬½«Ö¸Õë p ºóÍË nextdiff ×Ö½Ú£¬ÎªĞÂ header ¿Õ³ö¿Õ¼ä
+            /* Note that there is always space when p jumps backward: if
+             * the new previous entry is large, one of the deleted elements
+             * had a 5 bytes prevlen header, so there is for sure at least
+             * 5 bytes free and we need just 4. */
             p -= nextdiff;
-            // å°† first çš„å‰ç½®èŠ‚ç‚¹çš„é•¿åº¦ç¼–ç è‡³ p ä¸­
+            // ½« first µÄÇ°ÖÃ½ÚµãµÄ³¤¶È±àÂëÖÁ p ÖĞ
             // T = O(1)
-            zipPrevEncodeLength(p,first.prevrawlen);
+            assert(p >= first.p && p<zl+zlbytes-1);
+            zipStorePrevEntryLength(p,first.prevrawlen);
 
             /* Update offset for tail */
-            // æ›´æ–°åˆ°è¾¾è¡¨å°¾çš„åç§»é‡
+            // ¸üĞÂµ½´ï±íÎ²µÄÆ«ÒÆÁ¿
             // T = O(1)
-            ZIPLIST_TAIL_OFFSET(zl) =
-                intrev32ifbe(intrev32ifbe(ZIPLIST_TAIL_OFFSET(zl))-totlen);
+            set_tail = intrev32ifbe(ZIPLIST_TAIL_OFFSET(zl))-totlen;
 
             /* When the tail contains more than one entry, we need to take
              * "nextdiff" in account as well. Otherwise, a change in the
              * size of prevlen doesn't have an effect on the *tail* offset. */
-            // å¦‚æœè¢«åˆ é™¤èŠ‚ç‚¹ä¹‹åï¼Œæœ‰å¤šäºä¸€ä¸ªèŠ‚ç‚¹
-            // é‚£ä¹ˆç¨‹åºéœ€è¦å°† nextdiff è®°å½•çš„å­—èŠ‚æ•°ä¹Ÿè®¡ç®—åˆ°è¡¨å°¾åç§»é‡ä¸­
-            // è¿™æ ·æ‰èƒ½è®©è¡¨å°¾åç§»é‡æ­£ç¡®å¯¹é½è¡¨å°¾èŠ‚ç‚¹
+            assert(zipEntrySafe(zl, zlbytes, p, &tail, 1));
+            // Èç¹û±»É¾³ı½ÚµãÖ®ºó£¬ÓĞ¶àÓÚÒ»¸ö½Úµã
+            // ÄÇÃ´³ÌĞòĞèÒª½« nextdiff ¼ÇÂ¼µÄ×Ö½ÚÊıÒ²¼ÆËãµ½±íÎ²Æ«ÒÆÁ¿ÖĞ
+            // ÕâÑù²ÅÄÜÈÃ±íÎ²Æ«ÒÆÁ¿ÕıÈ·¶ÔÆë±íÎ²½Úµã
             // T = O(1)
-            tail = zipEntry(p);
             if (p[tail.headersize+tail.len] != ZIP_END) {
-                ZIPLIST_TAIL_OFFSET(zl) =
-                   intrev32ifbe(intrev32ifbe(ZIPLIST_TAIL_OFFSET(zl))+nextdiff);
+                set_tail = set_tail + nextdiff;
             }
 
             /* Move tail to the front of the ziplist */
-            // ä»è¡¨å°¾å‘è¡¨å¤´ç§»åŠ¨æ•°æ®ï¼Œè¦†ç›–è¢«åˆ é™¤èŠ‚ç‚¹çš„æ•°æ®
+            /* since we asserted that p >= first.p. we know totlen >= 0,
+             * so we know that p > first.p and this is guaranteed not to reach
+             * beyond the allocation, even if the entries lens are corrupted. */
+            // ´Ó±íÎ²Ïò±íÍ·ÒÆ¶¯Êı¾İ£¬¸²¸Ç±»É¾³ı½ÚµãµÄÊı¾İ
             // T = O(N)
-            memmove(first.p,p,
-                intrev32ifbe(ZIPLIST_BYTES(zl))-(p-zl)-1);
+            size_t bytes_to_move = zlbytes-(p-zl)-1;
+            memmove(first.p,p,bytes_to_move);
         } else {
-
-            // æ‰§è¡Œè¿™é‡Œï¼Œè¡¨ç¤ºè¢«åˆ é™¤èŠ‚ç‚¹ä¹‹åå·²ç»æ²¡æœ‰å…¶ä»–èŠ‚ç‚¹äº†
-
             /* The entire tail was deleted. No need to move memory. */
-            // T = O(1)
-            ZIPLIST_TAIL_OFFSET(zl) =
-                intrev32ifbe((first.p-zl)-first.prevrawlen);
+            // Ö´ĞĞÕâÀï£¬±íÊ¾±»É¾³ı½ÚµãÖ®ºóÒÑ¾­Ã»ÓĞÆäËû½ÚµãÁË
+
+            set_tail = (first.p-zl)-first.prevrawlen;
         }
 
-        /* Resize and update length */
-        // ç¼©å°å¹¶æ›´æ–° ziplist çš„é•¿åº¦
+        /* Resize the ziplist */
+        // ËõĞ¡²¢¸üĞÂ ziplist µÄ³¤¶È
         offset = first.p-zl;
-        zl = ziplistResize(zl, intrev32ifbe(ZIPLIST_BYTES(zl))-totlen+nextdiff);
-        ZIPLIST_INCR_LENGTH(zl,-deleted);
+        zlbytes -= totlen - nextdiff;
+        zl = ziplistResize(zl, zlbytes);
         p = zl+offset;
+
+        /* Update record count */
+        ZIPLIST_INCR_LENGTH(zl,-deleted);
+
+        /* Set the tail offset computed above */
+        assert(set_tail <= zlbytes - ZIPLIST_END_SIZE);
+        ZIPLIST_TAIL_OFFSET(zl) = intrev32ifbe(set_tail);
 
         /* When nextdiff != 0, the raw length of the next entry has changed, so
          * we need to cascade the update throughout the ziplist */
-        // å¦‚æœ p æ‰€æŒ‡å‘çš„èŠ‚ç‚¹çš„å¤§å°å·²ç»å˜æ›´ï¼Œé‚£ä¹ˆè¿›è¡Œçº§è”æ›´æ–°
-        // æ£€æŸ¥ p ä¹‹åçš„æ‰€æœ‰èŠ‚ç‚¹æ˜¯å¦ç¬¦åˆ ziplist çš„ç¼–ç è¦æ±‚
+        // Èç¹û p ËùÖ¸ÏòµÄ½ÚµãµÄ´óĞ¡ÒÑ¾­±ä¸ü£¬ÄÇÃ´½øĞĞ¼¶Áª¸üĞÂ
+        // ¼ì²é p Ö®ºóµÄËùÓĞ½ÚµãÊÇ·ñ·ûºÏ ziplist µÄ±àÂëÒªÇó
         // T = O(N^2)
         if (nextdiff != 0)
             zl = __ziplistCascadeUpdate(zl,p);
     }
-
     return zl;
 }
 
-/* Insert item at "p". */
+/* Insert item at "p". 
 /*
- * æ ¹æ®æŒ‡é’ˆ p æ‰€æŒ‡å®šçš„ä½ç½®ï¼Œå°†é•¿åº¦ä¸º slen çš„å­—ç¬¦ä¸² s æ’å…¥åˆ° zl ä¸­ã€‚
+ * ¸ù¾İÖ¸Õë p ËùÖ¸¶¨µÄÎ»ÖÃ£¬½«³¤¶ÈÎª slen µÄ×Ö·û´® s ²åÈëµ½ zl ÖĞ¡£
  *
- * å‡½æ•°çš„è¿”å›å€¼ä¸ºå®Œæˆæ’å…¥æ“ä½œä¹‹åçš„ ziplist
+ * º¯ÊıµÄ·µ»ØÖµÎªÍê³É²åÈë²Ù×÷Ö®ºóµÄ ziplist
  *
  * T = O(N^2)
  */
-static unsigned char *__ziplistInsert(unsigned char *zl, unsigned char *p, unsigned char *s, unsigned int slen) {
-    // è®°å½•å½“å‰ ziplist çš„é•¿åº¦
-    size_t curlen = intrev32ifbe(ZIPLIST_BYTES(zl)), reqlen, prevlen = 0;
+unsigned char *__ziplistInsert(unsigned char *zl, unsigned char *p, unsigned char *s, unsigned int slen) {
+    // ¼ÇÂ¼µ±Ç° ziplist µÄ³¤¶È
+    size_t curlen = intrev32ifbe(ZIPLIST_BYTES(zl)), reqlen, newlen;
+    unsigned int prevlensize, prevlen = 0;
     size_t offset;
     int nextdiff = 0;
     unsigned char encoding = 0;
     long long value = 123456789; /* initialized to avoid warning. Using a value
                                     that is easy to see if for some reason
                                     we use it uninitialized. */
-    zlentry entry, tail;
+    zlentry tail;
 
     /* Find out prevlen for the entry that is inserted. */
     if (p[0] != ZIP_END) {
-        // å¦‚æœ p[0] ä¸æŒ‡å‘åˆ—è¡¨æœ«ç«¯ï¼Œè¯´æ˜åˆ—è¡¨éç©ºï¼Œå¹¶ä¸” p æ­£æŒ‡å‘åˆ—è¡¨çš„å…¶ä¸­ä¸€ä¸ªèŠ‚ç‚¹
-        // é‚£ä¹ˆå–å‡º p æ‰€æŒ‡å‘èŠ‚ç‚¹çš„ä¿¡æ¯ï¼Œå¹¶å°†å®ƒä¿å­˜åˆ° entry ç»“æ„ä¸­
-        // ç„¶åç”¨ prevlen å˜é‡è®°å½•å‰ç½®èŠ‚ç‚¹çš„é•¿åº¦
-        // ï¼ˆå½“æ’å…¥æ–°èŠ‚ç‚¹ä¹‹å p æ‰€æŒ‡å‘çš„èŠ‚ç‚¹å°±æˆäº†æ–°èŠ‚ç‚¹çš„å‰ç½®èŠ‚ç‚¹ï¼‰
+
+        // Èç¹û p[0] ²»Ö¸ÏòÁĞ±íÄ©¶Ë£¬ËµÃ÷ÁĞ±í·Ç¿Õ£¬²¢ÇÒ p ÕıÖ¸ÏòÁĞ±íµÄÆäÖĞÒ»¸ö½Úµã
+        // ÄÇÃ´È¡³ö p ËùÖ¸Ïò½ÚµãµÄĞÅÏ¢£¬²¢½«Ëü±£´æµ½ entry ½á¹¹ÖĞ
+        // È»ºóÓÃ prevlen ±äÁ¿¼ÇÂ¼Ç°ÖÃ½ÚµãµÄ³¤¶È
+        // £¨µ±²åÈëĞÂ½ÚµãÖ®ºó p ËùÖ¸ÏòµÄ½Úµã¾Í³ÉÁËĞÂ½ÚµãµÄÇ°ÖÃ½Úµã£©
         // T = O(1)
-        entry = zipEntry(p);
-        prevlen = entry.prevrawlen;
+        ZIP_DECODE_PREVLEN(p, prevlensize, prevlen);
     } else {
-        // å¦‚æœ p æŒ‡å‘è¡¨å°¾æœ«ç«¯ï¼Œé‚£ä¹ˆç¨‹åºéœ€è¦æ£€æŸ¥åˆ—è¡¨æ˜¯å¦ä¸ºï¼š
-        // 1)å¦‚æœ ptail ä¹ŸæŒ‡å‘ ZIP_END ï¼Œé‚£ä¹ˆåˆ—è¡¨ä¸ºç©ºï¼›
-        // 2)å¦‚æœåˆ—è¡¨ä¸ä¸ºç©ºï¼Œé‚£ä¹ˆ ptail å°†æŒ‡å‘åˆ—è¡¨çš„æœ€åä¸€ä¸ªèŠ‚ç‚¹ã€‚
+        // Èç¹û p Ö¸Ïò±íÎ²Ä©¶Ë£¬ÄÇÃ´³ÌĞòĞèÒª¼ì²éÁĞ±íÊÇ·ñÎª£º
+        // 1)Èç¹û ptail Ò²Ö¸Ïò ZIP_END £¬ÄÇÃ´ÁĞ±íÎª¿Õ£»
+        // 2)Èç¹ûÁĞ±í²»Îª¿Õ£¬ÄÇÃ´ ptail ½«Ö¸ÏòÁĞ±íµÄ×îºóÒ»¸ö½Úµã¡£
         unsigned char *ptail = ZIPLIST_ENTRY_TAIL(zl);
         if (ptail[0] != ZIP_END) {
-            // è¡¨å°¾èŠ‚ç‚¹ä¸ºæ–°èŠ‚ç‚¹çš„å‰ç½®èŠ‚ç‚¹
 
-            // å–å‡ºè¡¨å°¾èŠ‚ç‚¹çš„é•¿åº¦
+            // ±íÎ²½ÚµãÎªĞÂ½ÚµãµÄÇ°ÖÃ½Úµã
+
+            // È¡³ö±íÎ²½ÚµãµÄ³¤¶È
             // T = O(1)
-            prevlen = zipRawEntryLength(ptail);
+            prevlen = zipRawEntryLengthSafe(zl, curlen, ptail);
         }
     }
 
     /* See if the entry can be encoded */
-    // å°è¯•çœ‹èƒ½å¦å°†è¾“å…¥å­—ç¬¦ä¸²è½¬æ¢ä¸ºæ•´æ•°ï¼Œå¦‚æœæˆåŠŸçš„è¯ï¼š
-    // 1)value å°†ä¿å­˜è½¬æ¢åçš„æ•´æ•°å€¼
-    // 2)encoding åˆ™ä¿å­˜é€‚ç”¨äº value çš„ç¼–ç æ–¹å¼
-    // æ— è®ºä½¿ç”¨ä»€ä¹ˆç¼–ç ï¼Œ reqlen éƒ½ä¿å­˜èŠ‚ç‚¹å€¼çš„é•¿åº¦
+    // ³¢ÊÔ¿´ÄÜ·ñ½«ÊäÈë×Ö·û´®×ª»»ÎªÕûÊı£¬Èç¹û³É¹¦µÄ»°£º
+    // 1)value ½«±£´æ×ª»»ºóµÄÕûÊıÖµ
+    // 2)encoding Ôò±£´æÊÊÓÃÓÚ value µÄ±àÂë·½Ê½
+    // ÎŞÂÛÊ¹ÓÃÊ²Ã´±àÂë£¬ reqlen ¶¼±£´æ½ÚµãÖµµÄ³¤¶È
     // T = O(N)
     if (zipTryEncoding(s,slen,&value,&encoding)) {
         /* 'encoding' is set to the appropriate integer encoding */
         reqlen = zipIntSize(encoding);
     } else {
-        /* 'encoding' is untouched, however zipEncodeLength will use the
+        /* 'encoding' is untouched, however zipStoreEntryEncoding will use the
          * string length to figure out how to encode it. */
         reqlen = slen;
     }
     /* We need space for both the length of the previous entry and
      * the length of the payload. */
-    // è®¡ç®—ç¼–ç å‰ç½®èŠ‚ç‚¹çš„é•¿åº¦æ‰€éœ€çš„å¤§å°
+
+    // ¼ÆËã±àÂëÇ°ÖÃ½ÚµãµÄ³¤¶ÈËùĞèµÄ´óĞ¡
     // T = O(1)
-    reqlen += zipPrevEncodeLength(NULL,prevlen);
-    // è®¡ç®—ç¼–ç å½“å‰èŠ‚ç‚¹å€¼æ‰€éœ€çš„å¤§å°
+    reqlen += zipStorePrevEntryLength(NULL,prevlen);
+
+    // ¼ÆËã±àÂëµ±Ç°½ÚµãÖµËùĞèµÄ´óĞ¡
     // T = O(1)
-    reqlen += zipEncodeLength(NULL,encoding,slen);
+    reqlen += zipStoreEntryEncoding(NULL,encoding,slen);
 
     /* When the insert position is not equal to the tail, we need to
      * make sure that the next entry can hold this entry's length in
      * its prevlen field. */
-    // åªè¦æ–°èŠ‚ç‚¹ä¸æ˜¯è¢«æ·»åŠ åˆ°åˆ—è¡¨æœ«ç«¯ï¼Œ
-    // é‚£ä¹ˆç¨‹åºå°±éœ€è¦æ£€æŸ¥çœ‹ p æ‰€æŒ‡å‘çš„èŠ‚ç‚¹ï¼ˆçš„ headerï¼‰èƒ½å¦ç¼–ç æ–°èŠ‚ç‚¹çš„é•¿åº¦ã€‚
-    // nextdiff ä¿å­˜äº†æ–°æ—§ç¼–ç ä¹‹é—´çš„å­—èŠ‚å¤§å°å·®ï¼Œå¦‚æœè¿™ä¸ªå€¼å¤§äº 0 
-    // é‚£ä¹ˆè¯´æ˜éœ€è¦å¯¹ p æ‰€æŒ‡å‘çš„èŠ‚ç‚¹ï¼ˆçš„ header ï¼‰è¿›è¡Œæ‰©å±•
+
+    // Ö»ÒªĞÂ½Úµã²»ÊÇ±»Ìí¼Óµ½ÁĞ±íÄ©¶Ë£¬
+    // ÄÇÃ´³ÌĞò¾ÍĞèÒª¼ì²é¿´ p ËùÖ¸ÏòµÄ½Úµã£¨µÄ header£©ÄÜ·ñ±àÂëĞÂ½ÚµãµÄ³¤¶È¡£
+    // nextdiff ±£´æÁËĞÂ¾É±àÂëÖ®¼äµÄ×Ö½Ú´óĞ¡²î£¬Èç¹ûÕâ¸öÖµ´óÓÚ 0 
+    // ÄÇÃ´ËµÃ÷ĞèÒª¶Ô p ËùÖ¸ÏòµÄ½Úµã£¨µÄ header £©½øĞĞÀ©Õ¹
     // T = O(1)
+    int forcelarge = 0;
     nextdiff = (p[0] != ZIP_END) ? zipPrevLenByteDiff(p,reqlen) : 0;
+    if (nextdiff == -4 && reqlen < 4) {
+        nextdiff = 0;
+        forcelarge = 1;
+    }
 
     /* Store offset because a realloc may change the address of zl. */
-    // å› ä¸ºé‡åˆ†é…ç©ºé—´å¯èƒ½ä¼šæ”¹å˜ zl çš„åœ°å€
-    // æ‰€ä»¥åœ¨åˆ†é…ä¹‹å‰ï¼Œéœ€è¦è®°å½• zl åˆ° p çš„åç§»é‡ï¼Œç„¶ååœ¨åˆ†é…ä¹‹åä¾é åç§»é‡è¿˜åŸ p 
+    // ÒòÎªÖØ·ÖÅä¿Õ¼ä¿ÉÄÜ»á¸Ä±ä zl µÄµØÖ·
+    // ËùÒÔÔÚ·ÖÅäÖ®Ç°£¬ĞèÒª¼ÇÂ¼ zl µ½ p µÄÆ«ÒÆÁ¿£¬È»ºóÔÚ·ÖÅäÖ®ºóÒÀ¿¿Æ«ÒÆÁ¿»¹Ô­ p 
     offset = p-zl;
-    // curlen æ˜¯ ziplist åŸæ¥çš„é•¿åº¦
-    // reqlen æ˜¯æ•´ä¸ªæ–°èŠ‚ç‚¹çš„é•¿åº¦
-    // nextdiff æ˜¯æ–°èŠ‚ç‚¹çš„åç»§èŠ‚ç‚¹æ‰©å±• header çš„é•¿åº¦ï¼ˆè¦ä¹ˆ 0 å­—èŠ‚ï¼Œè¦ä¹ˆ 4 ä¸ªå­—èŠ‚ï¼‰
+
+    // curlen ÊÇ ziplist Ô­À´µÄ³¤¶È
+    // reqlen ÊÇÕû¸öĞÂ½ÚµãµÄ³¤¶È
+    // nextdiff ÊÇĞÂ½ÚµãµÄºó¼Ì½ÚµãÀ©Õ¹ header µÄ³¤¶È£¨ÒªÃ´ 0 ×Ö½Ú£¬ÒªÃ´ 4 ¸ö×Ö½Ú£©
     // T = O(N)
-    zl = ziplistResize(zl,curlen+reqlen+nextdiff);
+    newlen = curlen+reqlen+nextdiff;
+    zl = ziplistResize(zl,newlen);
     p = zl+offset;
 
     /* Apply memory move when necessary and update tail offset. */
     if (p[0] != ZIP_END) {
-        // æ–°å…ƒç´ ä¹‹åè¿˜æœ‰èŠ‚ç‚¹ï¼Œå› ä¸ºæ–°å…ƒç´ çš„åŠ å…¥ï¼Œéœ€è¦å¯¹è¿™äº›åŸæœ‰èŠ‚ç‚¹è¿›è¡Œè°ƒæ•´
+        // ĞÂÔªËØÖ®ºó»¹ÓĞ½Úµã£¬ÒòÎªĞÂÔªËØµÄ¼ÓÈë£¬ĞèÒª¶ÔÕâĞ©Ô­ÓĞ½Úµã½øĞĞµ÷Õû
 
         /* Subtract one because of the ZIP_END bytes */
-        // ç§»åŠ¨ç°æœ‰å…ƒç´ ï¼Œä¸ºæ–°å…ƒç´ çš„æ’å…¥ç©ºé—´è…¾å‡ºä½ç½®
+        // ÒÆ¶¯ÏÖÓĞÔªËØ£¬ÎªĞÂÔªËØµÄ²åÈë¿Õ¼äÌÚ³öÎ»ÖÃ
         // T = O(N)
         memmove(p+reqlen,p-nextdiff,curlen-offset-1+nextdiff);
 
         /* Encode this entry's raw length in the next entry. */
-        // å°†æ–°èŠ‚ç‚¹çš„é•¿åº¦ç¼–ç è‡³åç½®èŠ‚ç‚¹
-        // p+reqlen å®šä½åˆ°åç½®èŠ‚ç‚¹
-        // reqlen æ˜¯æ–°èŠ‚ç‚¹çš„é•¿åº¦
+        // ½«ĞÂ½ÚµãµÄ³¤¶È±àÂëÖÁºóÖÃ½Úµã
+        // p+reqlen ¶¨Î»µ½ºóÖÃ½Úµã
+        // reqlen ÊÇĞÂ½ÚµãµÄ³¤¶È
         // T = O(1)
-        zipPrevEncodeLength(p+reqlen,reqlen);
+        if (forcelarge)
+            zipStorePrevEntryLengthLarge(p+reqlen,reqlen);
+        else
+            zipStorePrevEntryLength(p+reqlen,reqlen);
 
         /* Update offset for tail */
-        // æ›´æ–°åˆ°è¾¾è¡¨å°¾çš„åç§»é‡ï¼Œå°†æ–°èŠ‚ç‚¹çš„é•¿åº¦ä¹Ÿç®—ä¸Š
+        // ¸üĞÂµ½´ï±íÎ²µÄÆ«ÒÆÁ¿£¬½«ĞÂ½ÚµãµÄ³¤¶ÈÒ²ËãÉÏ
         ZIPLIST_TAIL_OFFSET(zl) =
             intrev32ifbe(intrev32ifbe(ZIPLIST_TAIL_OFFSET(zl))+reqlen);
 
         /* When the tail contains more than one entry, we need to take
          * "nextdiff" in account as well. Otherwise, a change in the
          * size of prevlen doesn't have an effect on the *tail* offset. */
-        // å¦‚æœæ–°èŠ‚ç‚¹çš„åé¢æœ‰å¤šäºä¸€ä¸ªèŠ‚ç‚¹
-        // é‚£ä¹ˆç¨‹åºéœ€è¦å°† nextdiff è®°å½•çš„å­—èŠ‚æ•°ä¹Ÿè®¡ç®—åˆ°è¡¨å°¾åç§»é‡ä¸­
-        // è¿™æ ·æ‰èƒ½è®©è¡¨å°¾åç§»é‡æ­£ç¡®å¯¹é½è¡¨å°¾èŠ‚ç‚¹
+        assert(zipEntrySafe(zl, newlen, p+reqlen, &tail, 1));
+        // Èç¹ûĞÂ½ÚµãµÄºóÃæÓĞ¶àÓÚÒ»¸ö½Úµã
+        // ÄÇÃ´³ÌĞòĞèÒª½« nextdiff ¼ÇÂ¼µÄ×Ö½ÚÊıÒ²¼ÆËãµ½±íÎ²Æ«ÒÆÁ¿ÖĞ
+        // ÕâÑù²ÅÄÜÈÃ±íÎ²Æ«ÒÆÁ¿ÕıÈ·¶ÔÆë±íÎ²½Úµã
         // T = O(1)
-        tail = zipEntry(p+reqlen);
         if (p[reqlen+tail.headersize+tail.len] != ZIP_END) {
             ZIPLIST_TAIL_OFFSET(zl) =
                 intrev32ifbe(intrev32ifbe(ZIPLIST_TAIL_OFFSET(zl))+nextdiff);
         }
     } else {
         /* This element will be the new tail. */
-        // æ–°å…ƒç´ æ˜¯æ–°çš„è¡¨å°¾èŠ‚ç‚¹
+        // ĞÂÔªËØÊÇĞÂµÄ±íÎ²½Úµã
         ZIPLIST_TAIL_OFFSET(zl) = intrev32ifbe(p-zl);
     }
 
     /* When nextdiff != 0, the raw length of the next entry has changed, so
      * we need to cascade the update throughout the ziplist */
-    // å½“ nextdiff != 0 æ—¶ï¼Œæ–°èŠ‚ç‚¹çš„åç»§èŠ‚ç‚¹çš„ï¼ˆheader éƒ¨åˆ†ï¼‰é•¿åº¦å·²ç»è¢«æ”¹å˜ï¼Œ
-    // æ‰€ä»¥éœ€è¦çº§è”åœ°æ›´æ–°åç»­çš„èŠ‚ç‚¹
+    // µ± nextdiff != 0 Ê±£¬ĞÂ½ÚµãµÄºó¼Ì½ÚµãµÄ£¨header ²¿·Ö£©³¤¶ÈÒÑ¾­±»¸Ä±ä£¬
+    // ËùÒÔĞèÒª¼¶ÁªµØ¸üĞÂºóĞøµÄ½Úµã
     if (nextdiff != 0) {
         offset = p-zl;
         // T  = O(N^2)
@@ -1202,11 +1474,11 @@ static unsigned char *__ziplistInsert(unsigned char *zl, unsigned char *p, unsig
     }
 
     /* Write the entry */
-    // ä¸€åˆ‡æå®šï¼Œå°†å‰ç½®èŠ‚ç‚¹çš„é•¿åº¦å†™å…¥æ–°èŠ‚ç‚¹çš„ header
-    p += zipPrevEncodeLength(p,prevlen);
-    // å°†èŠ‚ç‚¹å€¼çš„é•¿åº¦å†™å…¥æ–°èŠ‚ç‚¹çš„ header
-    p += zipEncodeLength(p,encoding,slen);
-    // å†™å…¥èŠ‚ç‚¹å€¼
+    // Ò»ÇĞ¸ã¶¨£¬½«Ç°ÖÃ½ÚµãµÄ³¤¶ÈĞ´ÈëĞÂ½ÚµãµÄ header
+    p += zipStorePrevEntryLength(p,prevlen);
+    // ½«½ÚµãÖµµÄ³¤¶ÈĞ´ÈëĞÂ½ÚµãµÄ header
+    p += zipStoreEntryEncoding(p,encoding,slen);
+    // Ğ´Èë½ÚµãÖµ
     if (ZIP_IS_STR(encoding)) {
         // T = O(N)
         memcpy(p,s,slen);
@@ -1214,95 +1486,210 @@ static unsigned char *__ziplistInsert(unsigned char *zl, unsigned char *p, unsig
         // T = O(1)
         zipSaveInteger(p,value,encoding);
     }
-
-    // æ›´æ–°åˆ—è¡¨çš„èŠ‚ç‚¹æ•°é‡è®¡æ•°å™¨
+    // ¸üĞÂÁĞ±íµÄ½ÚµãÊıÁ¿¼ÆÊıÆ÷
     // T = O(1)
     ZIPLIST_INCR_LENGTH(zl,1);
-
     return zl;
 }
 
+/* Merge ziplists 'first' and 'second' by appending 'second' to 'first'.
+ *
+ * NOTE: The larger ziplist is reallocated to contain the new merged ziplist.
+ * Either 'first' or 'second' can be used for the result.  The parameter not
+ * used will be free'd and set to NULL.
+ *
+ * After calling this function, the input parameters are no longer valid since
+ * they are changed and free'd in-place.
+ *
+ * The result ziplist is the contents of 'first' followed by 'second'.
+ *
+ * On failure: returns NULL if the merge is impossible.
+ * On success: returns the merged ziplist (which is expanded version of either
+ * 'first' or 'second', also frees the other unused input ziplist, and sets the
+ * input ziplist argument equal to newly reallocated ziplist return value. */
+unsigned char *ziplistMerge(unsigned char **first, unsigned char **second) {
+    /* If any params are null, we can't merge, so NULL. */
+    if (first == NULL || *first == NULL || second == NULL || *second == NULL)
+        return NULL;
+
+    /* Can't merge same list into itself. */
+    if (*first == *second)
+        return NULL;
+
+    size_t first_bytes = intrev32ifbe(ZIPLIST_BYTES(*first));
+    size_t first_len = intrev16ifbe(ZIPLIST_LENGTH(*first));
+
+    size_t second_bytes = intrev32ifbe(ZIPLIST_BYTES(*second));
+    size_t second_len = intrev16ifbe(ZIPLIST_LENGTH(*second));
+
+    int append;
+    unsigned char *source, *target;
+    size_t target_bytes, source_bytes;
+    /* Pick the largest ziplist so we can resize easily in-place.
+     * We must also track if we are now appending or prepending to
+     * the target ziplist. */
+    if (first_len >= second_len) {
+        /* retain first, append second to first. */
+        target = *first;
+        target_bytes = first_bytes;
+        source = *second;
+        source_bytes = second_bytes;
+        append = 1;
+    } else {
+        /* else, retain second, prepend first to second. */
+        target = *second;
+        target_bytes = second_bytes;
+        source = *first;
+        source_bytes = first_bytes;
+        append = 0;
+    }
+
+    /* Calculate final bytes (subtract one pair of metadata) */
+    size_t zlbytes = first_bytes + second_bytes -
+                     ZIPLIST_HEADER_SIZE - ZIPLIST_END_SIZE;
+    size_t zllength = first_len + second_len;
+
+    /* Combined zl length should be limited within UINT16_MAX */
+    zllength = zllength < UINT16_MAX ? zllength : UINT16_MAX;
+
+    /* Save offset positions before we start ripping memory apart. */
+    size_t first_offset = intrev32ifbe(ZIPLIST_TAIL_OFFSET(*first));
+    size_t second_offset = intrev32ifbe(ZIPLIST_TAIL_OFFSET(*second));
+
+    /* Extend target to new zlbytes then append or prepend source. */
+    target = zrealloc(target, zlbytes);
+    if (append) {
+        /* append == appending to target */
+        /* Copy source after target (copying over original [END]):
+         *   [TARGET - END, SOURCE - HEADER] */
+        memcpy(target + target_bytes - ZIPLIST_END_SIZE,
+               source + ZIPLIST_HEADER_SIZE,
+               source_bytes - ZIPLIST_HEADER_SIZE);
+    } else {
+        /* !append == prepending to target */
+        /* Move target *contents* exactly size of (source - [END]),
+         * then copy source into vacated space (source - [END]):
+         *   [SOURCE - END, TARGET - HEADER] */
+        memmove(target + source_bytes - ZIPLIST_END_SIZE,
+                target + ZIPLIST_HEADER_SIZE,
+                target_bytes - ZIPLIST_HEADER_SIZE);
+        memcpy(target, source, source_bytes - ZIPLIST_END_SIZE);
+    }
+
+    /* Update header metadata. */
+    ZIPLIST_BYTES(target) = intrev32ifbe(zlbytes);
+    ZIPLIST_LENGTH(target) = intrev16ifbe(zllength);
+    /* New tail offset is:
+     *   + N bytes of first ziplist
+     *   - 1 byte for [END] of first ziplist
+     *   + M bytes for the offset of the original tail of the second ziplist
+     *   - J bytes for HEADER because second_offset keeps no header. */
+    ZIPLIST_TAIL_OFFSET(target) = intrev32ifbe(
+                                   (first_bytes - ZIPLIST_END_SIZE) +
+                                   (second_offset - ZIPLIST_HEADER_SIZE));
+
+    /* __ziplistCascadeUpdate just fixes the prev length values until it finds a
+     * correct prev length value (then it assumes the rest of the list is okay).
+     * We tell CascadeUpdate to start at the first ziplist's tail element to fix
+     * the merge seam. */
+    target = __ziplistCascadeUpdate(target, target+first_offset);
+
+    /* Now free and NULL out what we didn't realloc */
+    if (append) {
+        zfree(*second);
+        *second = NULL;
+        *first = target;
+    } else {
+        zfree(*first);
+        *first = NULL;
+        *second = target;
+    }
+    return target;
+}
 /*
- * å°†é•¿åº¦ä¸º slen çš„å­—ç¬¦ä¸² s æ¨å…¥åˆ° zl ä¸­ã€‚
+ * ½«³¤¶ÈÎª slen µÄ×Ö·û´® s ÍÆÈëµ½ zl ÖĞ¡£
  *
- * where å‚æ•°çš„å€¼å†³å®šäº†æ¨å…¥çš„æ–¹å‘ï¼š
- * - å€¼ä¸º ZIPLIST_HEAD æ—¶ï¼Œå°†æ–°å€¼æ¨å…¥åˆ°è¡¨å¤´ã€‚
- * - å¦åˆ™ï¼Œå°†æ–°å€¼æ¨å…¥åˆ°è¡¨æœ«ç«¯ã€‚
+ * where ²ÎÊıµÄÖµ¾ö¶¨ÁËÍÆÈëµÄ·½Ïò£º
+ * - ÖµÎª ZIPLIST_HEAD Ê±£¬½«ĞÂÖµÍÆÈëµ½±íÍ·¡£
+ * - ·ñÔò£¬½«ĞÂÖµÍÆÈëµ½±íÄ©¶Ë¡£
  *
- * å‡½æ•°çš„è¿”å›å€¼ä¸ºæ·»åŠ æ–°å€¼åçš„ ziplist ã€‚
+ * º¯ÊıµÄ·µ»ØÖµÎªÌí¼ÓĞÂÖµºóµÄ ziplist ¡£
  *
  * T = O(N^2)
  */
 unsigned char *ziplistPush(unsigned char *zl, unsigned char *s, unsigned int slen, int where) {
-
-    // æ ¹æ® where å‚æ•°çš„å€¼ï¼Œå†³å®šå°†å€¼æ¨å…¥åˆ°è¡¨å¤´è¿˜æ˜¯è¡¨å°¾
+    // ¸ù¾İ where ²ÎÊıµÄÖµ£¬¾ö¶¨½«ÖµÍÆÈëµ½±íÍ·»¹ÊÇ±íÎ²
     unsigned char *p;
     p = (where == ZIPLIST_HEAD) ? ZIPLIST_ENTRY_HEAD(zl) : ZIPLIST_ENTRY_END(zl);
-
-    // è¿”å›æ·»åŠ æ–°å€¼åçš„ ziplist
+    // ·µ»ØÌí¼ÓĞÂÖµºóµÄ ziplist
     // T = O(N^2)
     return __ziplistInsert(zl,p,s,slen);
 }
 
 /* Returns an offset to use for iterating with ziplistNext. When the given
  * index is negative, the list is traversed back to front. When the list
- * doesn't contain an element at the provided index, NULL is returned. */
+ * doesn't contain an element at the provided index, NULL is returned. 
 /*
- * æ ¹æ®ç»™å®šç´¢å¼•ï¼Œéå†åˆ—è¡¨ï¼Œå¹¶è¿”å›ç´¢å¼•æŒ‡å®šèŠ‚ç‚¹çš„æŒ‡é’ˆã€‚
+ * ¸ù¾İ¸ø¶¨Ë÷Òı£¬±éÀúÁĞ±í£¬²¢·µ»ØË÷ÒıÖ¸¶¨½ÚµãµÄÖ¸Õë¡£
  *
- * å¦‚æœç´¢å¼•ä¸ºæ­£ï¼Œé‚£ä¹ˆä»è¡¨å¤´å‘è¡¨å°¾éå†ã€‚
- * å¦‚æœç´¢å¼•ä¸ºè´Ÿï¼Œé‚£ä¹ˆä»è¡¨å°¾å‘è¡¨å¤´éå†ã€‚
- * æ­£æ•°ç´¢å¼•ä» 0 å¼€å§‹ï¼Œè´Ÿæ•°ç´¢å¼•ä» -1 å¼€å§‹ã€‚
+ * Èç¹ûË÷ÒıÎªÕı£¬ÄÇÃ´´Ó±íÍ·Ïò±íÎ²±éÀú¡£
+ * Èç¹ûË÷ÒıÎª¸º£¬ÄÇÃ´´Ó±íÎ²Ïò±íÍ·±éÀú¡£
+ * ÕıÊıË÷Òı´Ó 0 ¿ªÊ¼£¬¸ºÊıË÷Òı´Ó -1 ¿ªÊ¼¡£
  *
- * å¦‚æœç´¢å¼•è¶…è¿‡åˆ—è¡¨çš„èŠ‚ç‚¹æ•°é‡ï¼Œæˆ–è€…åˆ—è¡¨ä¸ºç©ºï¼Œé‚£ä¹ˆè¿”å› NULL ã€‚
+ * Èç¹ûË÷Òı³¬¹ıÁĞ±íµÄ½ÚµãÊıÁ¿£¬»òÕßÁĞ±íÎª¿Õ£¬ÄÇÃ´·µ»Ø NULL ¡£
  *
  * T = O(N)
  */
 unsigned char *ziplistIndex(unsigned char *zl, int index) {
-
     unsigned char *p;
-
-    zlentry entry;
-
-    // å¤„ç†è´Ÿæ•°ç´¢å¼•
+    unsigned int prevlensize, prevlen = 0;
+    size_t zlbytes = intrev32ifbe(ZIPLIST_BYTES(zl));
+    // ´¦Àí¸ºÊıË÷Òı
     if (index < 0) {
 
-        // å°†ç´¢å¼•è½¬æ¢ä¸ºæ­£æ•°
+        // ½«Ë÷Òı×ª»»ÎªÕıÊı
         index = (-index)-1;
         
-        // å®šä½åˆ°è¡¨å°¾èŠ‚ç‚¹
+        // ¶¨Î»µ½±íÎ²½Úµã
         p = ZIPLIST_ENTRY_TAIL(zl);
 
-        // å¦‚æœåˆ—è¡¨ä¸ä¸ºç©ºï¼Œé‚£ä¹ˆã€‚ã€‚ã€‚
+        // Èç¹ûÁĞ±í²»Îª¿Õ£¬ÄÇÃ´¡£¡£¡£
         if (p[0] != ZIP_END) {
-
-            // ä»è¡¨å°¾å‘è¡¨å¤´éå†
-            entry = zipEntry(p);
-            // T = O(N)
-            while (entry.prevrawlen > 0 && index--) {
-                // å‰ç§»æŒ‡é’ˆ
-                p -= entry.prevrawlen;
-                // T = O(1)
-                entry = zipEntry(p);
+            /* No need for "safe" check: when going backwards, we know the header
+             * we're parsing is in the range, we just need to assert (below) that
+             * the size we take doesn't cause p to go outside the allocation. */
+   			// ´Ó±íÎ²Ïò±íÍ·±éÀú
+            ZIP_DECODE_PREVLEN(p, prevlensize, prevlen);
+            while (prevlen > 0 && index--) {
+				                // Ç°ÒÆÖ¸Õë
+                p -= prevlen;
+                assert(p >= zl + ZIPLIST_HEADER_SIZE && p < zl + zlbytes - ZIPLIST_END_SIZE);
+				                // T = O(1)
+                ZIP_DECODE_PREVLEN(p, prevlensize, prevlen);
             }
         }
-
-    // å¤„ç†æ­£æ•°ç´¢å¼•
+	    // ´¦ÀíÕıÊıË÷Òı
     } else {
-
-        // å®šä½åˆ°è¡¨å¤´èŠ‚ç‚¹
+		        // ¶¨Î»µ½±íÍ·½Úµã
         p = ZIPLIST_ENTRY_HEAD(zl);
 
         // T = O(N)
-        while (p[0] != ZIP_END && index--) {
-            // åç§»æŒ‡é’ˆ
+        while (index--) {
+            /* Use the "safe" length: When we go forward, we need to be careful
+             * not to decode an entry header if it's past the ziplist allocation. */
+            // ºóÒÆÖ¸Õë
             // T = O(1)
-            p += zipRawEntryLength(p);
+            p += zipRawEntryLengthSafe(zl, zlbytes, p);
+            if (p[0] == ZIP_END)
+                break;
         }
     }
 
-    // è¿”å›ç»“æœ
-    return (p[0] == ZIP_END || index > 0) ? NULL : p;
+    // ·µ»Ø½á¹û
+    if (p[0] == ZIP_END || index > 0)
+        return NULL;
+    zipAssertValidEntry(zl, zlbytes, p);
+    return p;
 }
 
 /* Return pointer to next entry in ziplist.
@@ -1310,127 +1697,122 @@ unsigned char *ziplistIndex(unsigned char *zl, int index) {
  * zl is the pointer to the ziplist
  * p is the pointer to the current element
  *
- * The element after 'p' is returned, otherwise NULL if we are at the end. */
-/*
- * è¿”å› p æ‰€æŒ‡å‘èŠ‚ç‚¹çš„åç½®èŠ‚ç‚¹ã€‚
+ * The element after 'p' is returned, otherwise NULL if we are at the end. 
+ * ·µ»Ø p ËùÖ¸Ïò½ÚµãµÄºóÖÃ½Úµã¡£
  *
- * å¦‚æœ p ä¸ºè¡¨æœ«ç«¯ï¼Œæˆ–è€… p å·²ç»æ˜¯è¡¨å°¾èŠ‚ç‚¹ï¼Œé‚£ä¹ˆè¿”å› NULL ã€‚
+ * Èç¹û p Îª±íÄ©¶Ë£¬»òÕß p ÒÑ¾­ÊÇ±íÎ²½Úµã£¬ÄÇÃ´·µ»Ø NULL ¡£
  *
  * T = O(1)
  */
 unsigned char *ziplistNext(unsigned char *zl, unsigned char *p) {
     ((void) zl);
+    size_t zlbytes = intrev32ifbe(ZIPLIST_BYTES(zl));
 
     /* "p" could be equal to ZIP_END, caused by ziplistDelete,
      * and we should return NULL. Otherwise, we should return NULL
      * when the *next* element is ZIP_END (there is no next entry). */
-    // p å·²ç»æŒ‡å‘åˆ—è¡¨æœ«ç«¯
+    // p ÒÑ¾­Ö¸ÏòÁĞ±íÄ©¶Ë
     if (p[0] == ZIP_END) {
         return NULL;
     }
 
-    // æŒ‡å‘åä¸€èŠ‚ç‚¹
+    // Ö¸ÏòºóÒ»½Úµã
     p += zipRawEntryLength(p);
     if (p[0] == ZIP_END) {
-        // p å·²ç»æ˜¯è¡¨å°¾èŠ‚ç‚¹ï¼Œæ²¡æœ‰åç½®èŠ‚ç‚¹
+        // p ÒÑ¾­ÊÇ±íÎ²½Úµã£¬Ã»ÓĞºóÖÃ½Úµã
         return NULL;
     }
 
+    zipAssertValidEntry(zl, zlbytes, p);
     return p;
 }
 
-/* Return pointer to previous entry in ziplist. */
+/* Return pointer to previous entry in ziplist. 
 /*
- * è¿”å› p æ‰€æŒ‡å‘èŠ‚ç‚¹çš„å‰ç½®èŠ‚ç‚¹ã€‚
+ * ·µ»Ø p ËùÖ¸Ïò½ÚµãµÄÇ°ÖÃ½Úµã¡£
  *
- * å¦‚æœ p æ‰€æŒ‡å‘ä¸ºç©ºåˆ—è¡¨ï¼Œæˆ–è€… p å·²ç»æŒ‡å‘è¡¨å¤´èŠ‚ç‚¹ï¼Œé‚£ä¹ˆè¿”å› NULL ã€‚
+ * Èç¹û p ËùÖ¸ÏòÎª¿ÕÁĞ±í£¬»òÕß p ÒÑ¾­Ö¸Ïò±íÍ·½Úµã£¬ÄÇÃ´·µ»Ø NULL ¡£
  *
  * T = O(1)
  */
 unsigned char *ziplistPrev(unsigned char *zl, unsigned char *p) {
-    zlentry entry;
+    unsigned int prevlensize, prevlen = 0;
 
     /* Iterating backwards from ZIP_END should return the tail. When "p" is
      * equal to the first element of the list, we're already at the head,
      * and should return NULL. */
-    
-    // å¦‚æœ p æŒ‡å‘åˆ—è¡¨æœ«ç«¯ï¼ˆåˆ—è¡¨ä¸ºç©ºï¼Œæˆ–è€…åˆšå¼€å§‹ä»è¡¨å°¾å‘è¡¨å¤´è¿­ä»£ï¼‰
-    // é‚£ä¹ˆå°è¯•å–å‡ºåˆ—è¡¨å°¾ç«¯èŠ‚ç‚¹
+    // Èç¹û p Ö¸ÏòÁĞ±íÄ©¶Ë£¨ÁĞ±íÎª¿Õ£¬»òÕß¸Õ¿ªÊ¼´Ó±íÎ²Ïò±íÍ·µü´ú£©
+    // ÄÇÃ´³¢ÊÔÈ¡³öÁĞ±íÎ²¶Ë½Úµã
     if (p[0] == ZIP_END) {
         p = ZIPLIST_ENTRY_TAIL(zl);
-        // å°¾ç«¯èŠ‚ç‚¹ä¹ŸæŒ‡å‘åˆ—è¡¨æœ«ç«¯ï¼Œé‚£ä¹ˆåˆ—è¡¨ä¸ºç©º
+        // Î²¶Ë½ÚµãÒ²Ö¸ÏòÁĞ±íÄ©¶Ë£¬ÄÇÃ´ÁĞ±íÎª¿Õ
         return (p[0] == ZIP_END) ? NULL : p;
     
-    // å¦‚æœ p æŒ‡å‘åˆ—è¡¨å¤´ï¼Œé‚£ä¹ˆè¯´æ˜è¿­ä»£å·²ç»å®Œæˆ
+    // Èç¹û p Ö¸ÏòÁĞ±íÍ·£¬ÄÇÃ´ËµÃ÷µü´úÒÑ¾­Íê³É
     } else if (p == ZIPLIST_ENTRY_HEAD(zl)) {
         return NULL;
 
-    // æ—¢ä¸æ˜¯è¡¨å¤´ä¹Ÿä¸æ˜¯è¡¨å°¾ï¼Œä»è¡¨å°¾å‘è¡¨å¤´ç§»åŠ¨æŒ‡é’ˆ
+    // ¼È²»ÊÇ±íÍ·Ò²²»ÊÇ±íÎ²£¬´Ó±íÎ²Ïò±íÍ·ÒÆ¶¯Ö¸Õë
     } else {
-        // è®¡ç®—å‰ä¸€ä¸ªèŠ‚ç‚¹çš„èŠ‚ç‚¹æ•°
-        entry = zipEntry(p);
-        assert(entry.prevrawlen > 0);
-        // ç§»åŠ¨æŒ‡é’ˆï¼ŒæŒ‡å‘å‰ä¸€ä¸ªèŠ‚ç‚¹
-        return p-entry.prevrawlen;
+      // ¼ÆËãÇ°Ò»¸ö½ÚµãµÄ½ÚµãÊı
+        ZIP_DECODE_PREVLEN(p, prevlensize, prevlen);
+        assert(prevlen > 0);
+        // ÒÆ¶¯Ö¸Õë£¬Ö¸ÏòÇ°Ò»¸ö½Úµã
+        p-=prevlen;
+        size_t zlbytes = intrev32ifbe(ZIPLIST_BYTES(zl));
+        zipAssertValidEntry(zl, zlbytes, p);
+        return p;
     }
 }
 
-/* Get entry pointed to by 'p' and store in either 'e' or 'v' depending
- * on the encoding of the entry. 'e' is always set to NULL to be able
+/* Get entry pointed to by 'p' and store in either '*sstr' or 'sval' depending
+ * on the encoding of the entry. '*sstr' is always set to NULL to be able
  * to find out whether the string pointer or the integer value was set.
- * Return 0 if 'p' points to the end of the ziplist, 1 otherwise. */
-/*
- * å–å‡º p æ‰€æŒ‡å‘èŠ‚ç‚¹çš„å€¼ï¼š
+ * Return 0 if 'p' points to the end of the ziplist, 1 otherwise. 
+ * È¡³ö p ËùÖ¸Ïò½ÚµãµÄÖµ£º
  *
- * - å¦‚æœèŠ‚ç‚¹ä¿å­˜çš„æ˜¯å­—ç¬¦ä¸²ï¼Œé‚£ä¹ˆå°†å­—ç¬¦ä¸²å€¼æŒ‡é’ˆä¿å­˜åˆ° *sstr ä¸­ï¼Œå­—ç¬¦ä¸²é•¿åº¦ä¿å­˜åˆ° *slen
+ * - Èç¹û½Úµã±£´æµÄÊÇ×Ö·û´®£¬ÄÇÃ´½«×Ö·û´®ÖµÖ¸Õë±£´æµ½ *sstr ÖĞ£¬×Ö·û´®³¤¶È±£´æµ½ *slen
  *
- * - å¦‚æœèŠ‚ç‚¹ä¿å­˜çš„æ˜¯æ•´æ•°ï¼Œé‚£ä¹ˆå°†æ•´æ•°ä¿å­˜åˆ° *sval
+ * - Èç¹û½Úµã±£´æµÄÊÇÕûÊı£¬ÄÇÃ´½«ÕûÊı±£´æµ½ *sval
  *
- * ç¨‹åºå¯ä»¥é€šè¿‡æ£€æŸ¥ *sstr æ˜¯å¦ä¸º NULL æ¥æ£€æŸ¥å€¼æ˜¯å­—ç¬¦ä¸²è¿˜æ˜¯æ•´æ•°ã€‚
+ * ³ÌĞò¿ÉÒÔÍ¨¹ı¼ì²é *sstr ÊÇ·ñÎª NULL À´¼ì²éÖµÊÇ×Ö·û´®»¹ÊÇÕûÊı¡£
  *
- * æå–å€¼æˆåŠŸè¿”å› 1 ï¼Œ
- * å¦‚æœ p ä¸ºç©ºï¼Œæˆ–è€… p æŒ‡å‘çš„æ˜¯åˆ—è¡¨æœ«ç«¯ï¼Œé‚£ä¹ˆè¿”å› 0 ï¼Œæå–å€¼å¤±è´¥ã€‚
+ * ÌáÈ¡Öµ³É¹¦·µ»Ø 1 £¬
+ * Èç¹û p Îª¿Õ£¬»òÕß p Ö¸ÏòµÄÊÇÁĞ±íÄ©¶Ë£¬ÄÇÃ´·µ»Ø 0 £¬ÌáÈ¡ÖµÊ§°Ü¡£
  *
  * T = O(1)
  */
 unsigned int ziplistGet(unsigned char *p, unsigned char **sstr, unsigned int *slen, long long *sval) {
-
     zlentry entry;
     if (p == NULL || p[0] == ZIP_END) return 0;
     if (sstr) *sstr = NULL;
 
-    // å–å‡º p æ‰€æŒ‡å‘çš„èŠ‚ç‚¹çš„å„é¡¹ä¿¡æ¯ï¼Œå¹¶ä¿å­˜åˆ°ç»“æ„ entry ä¸­
+    // È¡³ö p ËùÖ¸ÏòµÄ½ÚµãµÄ¸÷ÏîĞÅÏ¢£¬²¢±£´æµ½½á¹¹ entry ÖĞ
     // T = O(1)
-    entry = zipEntry(p);
-
-    // èŠ‚ç‚¹çš„å€¼ä¸ºå­—ç¬¦ä¸²ï¼Œå°†å­—ç¬¦ä¸²é•¿åº¦ä¿å­˜åˆ° *slen ï¼Œå­—ç¬¦ä¸²ä¿å­˜åˆ° *sstr
-    // T = O(1)
-    if (ZIP_IS_STR(entry.encoding)) {
+    zipEntry(p, &entry); /* no need for "safe" variant since the input pointer was validated by the function that returned it. */
+    // ½ÚµãµÄÖµÎª×Ö·û´®£¬½«×Ö·û´®³¤¶È±£´æµ½ *slen £¬×Ö·û´®±£´æµ½ *sstr
+    // T = O(1)    if (ZIP_IS_STR(entry.encoding)) {
         if (sstr) {
             *slen = entry.len;
             *sstr = p+entry.headersize;
         }
-    
-    // èŠ‚ç‚¹çš„å€¼ä¸ºæ•´æ•°ï¼Œè§£ç å€¼ï¼Œå¹¶å°†å€¼ä¿å­˜åˆ° *sval
-    // T = O(1)
-    } else {
+    // ½ÚµãµÄÖµÎªÕûÊı£¬½âÂëÖµ£¬²¢½«Öµ±£´æµ½ *sval
+    // T = O(1)    } else {
         if (sval) {
             *sval = zipLoadInteger(p+entry.headersize,entry.encoding);
         }
     }
-
     return 1;
 }
 
 /* Insert an entry at "p". 
  *
- * å°†åŒ…å«ç»™å®šå€¼ s çš„æ–°èŠ‚ç‚¹æ’å…¥åˆ°ç»™å®šçš„ä½ç½® p ä¸­ã€‚
+ * ½«°üº¬¸ø¶¨Öµ s µÄĞÂ½Úµã²åÈëµ½¸ø¶¨µÄÎ»ÖÃ p ÖĞ¡£
  *
- * å¦‚æœ p æŒ‡å‘ä¸€ä¸ªèŠ‚ç‚¹ï¼Œé‚£ä¹ˆæ–°èŠ‚ç‚¹å°†æ”¾åœ¨åŸæœ‰èŠ‚ç‚¹çš„å‰é¢ã€‚
+ * Èç¹û p Ö¸ÏòÒ»¸ö½Úµã£¬ÄÇÃ´ĞÂ½Úµã½«·ÅÔÚÔ­ÓĞ½ÚµãµÄÇ°Ãæ¡£
  *
  * T = O(N^2)
- */
-unsigned char *ziplistInsert(unsigned char *zl, unsigned char *p, unsigned char *s, unsigned int slen) {
+ */unsigned char *ziplistInsert(unsigned char *zl, unsigned char *p, unsigned char *s, unsigned int slen) {
     return __ziplistInsert(zl,p,s,slen);
 }
 
@@ -1438,18 +1820,15 @@ unsigned char *ziplistInsert(unsigned char *zl, unsigned char *p, unsigned char 
  * Also update *p in place, to be able to iterate over the
  * ziplist, while deleting entries. 
  *
- * ä» zl ä¸­åˆ é™¤ *p æ‰€æŒ‡å‘çš„èŠ‚ç‚¹ï¼Œ
- * å¹¶ä¸”åŸåœ°æ›´æ–° *p æ‰€æŒ‡å‘çš„ä½ç½®ï¼Œä½¿å¾—å¯ä»¥åœ¨è¿­ä»£åˆ—è¡¨çš„è¿‡ç¨‹ä¸­å¯¹èŠ‚ç‚¹è¿›è¡Œåˆ é™¤ã€‚
+ * ´Ó zl ÖĞÉ¾³ı *p ËùÖ¸ÏòµÄ½Úµã£¬
+ * ²¢ÇÒÔ­µØ¸üĞÂ *p ËùÖ¸ÏòµÄÎ»ÖÃ£¬Ê¹µÃ¿ÉÒÔÔÚµü´úÁĞ±íµÄ¹ı³ÌÖĞ¶Ô½Úµã½øĞĞÉ¾³ı¡£
  *
  * T = O(N^2)
- */
-unsigned char *ziplistDelete(unsigned char *zl, unsigned char **p) {
-
-    // å› ä¸º __ziplistDelete æ—¶ä¼šå¯¹ zl è¿›è¡Œå†…å­˜é‡åˆ†é…
-    // è€Œå†…å­˜å……åˆ†é…å¯èƒ½ä¼šæ”¹å˜ zl çš„å†…å­˜åœ°å€
-    // æ‰€ä»¥è¿™é‡Œéœ€è¦è®°å½•åˆ°è¾¾ *p çš„åç§»é‡
-    // è¿™æ ·åœ¨åˆ é™¤èŠ‚ç‚¹ä¹‹åå°±å¯ä»¥é€šè¿‡åç§»é‡æ¥å°† *p è¿˜åŸåˆ°æ­£ç¡®çš„ä½ç½®
-    size_t offset = *p-zl;
+ */unsigned char *ziplistDelete(unsigned char *zl, unsigned char **p) {
+    // ÒòÎª __ziplistDelete Ê±»á¶Ô zl ½øĞĞÄÚ´æÖØ·ÖÅä
+    // ¶øÄÚ´æ³ä·ÖÅä¿ÉÄÜ»á¸Ä±ä zl µÄÄÚ´æµØÖ·
+    // ËùÒÔÕâÀïĞèÒª¼ÇÂ¼µ½´ï *p µÄÆ«ÒÆÁ¿
+    // ÕâÑùÔÚÉ¾³ı½ÚµãÖ®ºó¾Í¿ÉÒÔÍ¨¹ıÆ«ÒÆÁ¿À´½« *p »¹Ô­µ½ÕıÈ·µÄÎ»ÖÃ    size_t offset = *p-zl;
     zl = __ziplistDelete(zl,*p,1);
 
     /* Store pointer to current element in p, because ziplistDelete will
@@ -1457,32 +1836,64 @@ unsigned char *ziplistDelete(unsigned char *zl, unsigned char **p) {
      * When the delete direction is back to front, we might delete the last
      * entry and end up with "p" pointing to ZIP_END, so check this. */
     *p = zl+offset;
-
     return zl;
 }
 
 /* Delete a range of entries from the ziplist. 
  *
- * ä» index ç´¢å¼•æŒ‡å®šçš„èŠ‚ç‚¹å¼€å§‹ï¼Œè¿ç»­åœ°ä» zl ä¸­åˆ é™¤ num ä¸ªèŠ‚ç‚¹ã€‚
+ * ´Ó index Ë÷ÒıÖ¸¶¨µÄ½Úµã¿ªÊ¼£¬Á¬ĞøµØ´Ó zl ÖĞÉ¾³ı num ¸ö½Úµã¡£
  *
  * T = O(N^2)
  */
-unsigned char *ziplistDeleteRange(unsigned char *zl, unsigned int index, unsigned int num) {
-
-    // æ ¹æ®ç´¢å¼•å®šä½åˆ°èŠ‚ç‚¹
-    // T = O(N)
-    unsigned char *p = ziplistIndex(zl,index);
-
-    // è¿ç»­åˆ é™¤ num ä¸ªèŠ‚ç‚¹
-    // T = O(N^2)
-    return (p == NULL) ? zl : __ziplistDelete(zl,p,num);
+unsigned char *ziplistDeleteRange(unsigned char *zl, int index, unsigned int num) {
+    // ¸ù¾İË÷Òı¶¨Î»µ½½Úµã
+    // T = O(N)    unsigned char *p = ziplistIndex(zl,index);
+    // Á¬ĞøÉ¾³ı num ¸ö½Úµã
+    // T = O(N^2)    return (p == NULL) ? zl : __ziplistDelete(zl,p,num);
 }
 
-/* Compare entry pointer to by 'p' with 'entry'. Return 1 if equal. 
+/* Replaces the entry at p. This is equivalent to a delete and an insert,
+ * but avoids some overhead when replacing a value of the same size. */
+unsigned char *ziplistReplace(unsigned char *zl, unsigned char *p, unsigned char *s, unsigned int slen) {
+
+    /* get metadata of the current entry */
+    zlentry entry;
+    zipEntry(p, &entry);
+
+    /* compute length of entry to store, excluding prevlen */
+    unsigned int reqlen;
+    unsigned char encoding = 0;
+    long long value = 123456789; /* initialized to avoid warning. */
+    if (zipTryEncoding(s,slen,&value,&encoding)) {
+        reqlen = zipIntSize(encoding); /* encoding is set */
+    } else {
+        reqlen = slen; /* encoding == 0 */
+    }
+    reqlen += zipStoreEntryEncoding(NULL,encoding,slen);
+
+    if (reqlen == entry.lensize + entry.len) {
+        /* Simply overwrite the element. */
+        p += entry.prevrawlensize;
+        p += zipStoreEntryEncoding(p,encoding,slen);
+        if (ZIP_IS_STR(encoding)) {
+            memcpy(p,s,slen);
+        } else {
+            zipSaveInteger(p,value,encoding);
+        }
+    } else {
+        /* Fallback. */
+        zl = ziplistDelete(zl,&p);
+        zl = ziplistInsert(zl,p,s,slen);
+    }
+    return zl;
+}
+
+/* Compare entry pointer to by 'p' with 'sstr' of length 'slen'. */
+/* Return 1 if equal. 
  *
- * å°† p æ‰€æŒ‡å‘çš„èŠ‚ç‚¹çš„å€¼å’Œ sstr è¿›è¡Œå¯¹æ¯”ã€‚
+ * ½« p ËùÖ¸ÏòµÄ½ÚµãµÄÖµºÍ sstr ½øĞĞ¶Ô±È¡£
  *
- * å¦‚æœèŠ‚ç‚¹å€¼å’Œ sstr çš„å€¼ç›¸ç­‰ï¼Œè¿”å› 1 ï¼Œä¸ç›¸ç­‰åˆ™è¿”å› 0 ã€‚
+ * Èç¹û½ÚµãÖµºÍ sstr µÄÖµÏàµÈ£¬·µ»Ø 1 £¬²»ÏàµÈÔò·µ»Ø 0 ¡£
  *
  * T = O(N)
  */
@@ -1492,81 +1903,71 @@ unsigned int ziplistCompare(unsigned char *p, unsigned char *sstr, unsigned int 
     long long zval, sval;
     if (p[0] == ZIP_END) return 0;
 
-    // å–å‡ºèŠ‚ç‚¹
-    entry = zipEntry(p);
+    // È¡³ö½Úµã
+    zipEntry(p, &entry); /* no need for "safe" variant since the input pointer was validated by the function that returned it. */
     if (ZIP_IS_STR(entry.encoding)) {
-
-        // èŠ‚ç‚¹å€¼ä¸ºå­—ç¬¦ä¸²ï¼Œè¿›è¡Œå­—ç¬¦ä¸²å¯¹æ¯”
-
+        // ½ÚµãÖµÎª×Ö·û´®£¬½øĞĞ×Ö·û´®¶Ô±È
         /* Raw compare */
         if (entry.len == slen) {
-            // T = O(N)
-            return memcmp(p+entry.headersize,sstr,slen) == 0;
+            // T = O(N)            return memcmp(p+entry.headersize,sstr,slen) == 0;
         } else {
             return 0;
         }
     } else {
-        
-        // èŠ‚ç‚¹å€¼ä¸ºæ•´æ•°ï¼Œè¿›è¡Œæ•´æ•°å¯¹æ¯”
-
-        /* Try to compare encoded values. Don't compare encoding because
+        // ½ÚµãÖµÎªÕûÊı£¬½øĞĞÕûÊı¶Ô±È        /* Try to compare encoded values. Don't compare encoding because
          * different implementations may encoded integers differently. */
         if (zipTryEncoding(sstr,slen,&sval,&sencoding)) {
-          // T = O(1)
-          zval = zipLoadInteger(p+entry.headersize,entry.encoding);
+          // T = O(1)          zval = zipLoadInteger(p+entry.headersize,entry.encoding);
           return zval == sval;
         }
     }
-
     return 0;
 }
 
-/* Find pointer to the entry equal to the specified entry. 
+/* Find pointer to the entry equal to the specified entry. Skip 'skip' entries
+ * between every comparison. Returns NULL when the field could not be found. 
  * 
- * å¯»æ‰¾èŠ‚ç‚¹å€¼å’Œ vstr ç›¸ç­‰çš„åˆ—è¡¨èŠ‚ç‚¹ï¼Œå¹¶è¿”å›è¯¥èŠ‚ç‚¹çš„æŒ‡é’ˆã€‚
+ * Ñ°ÕÒ½ÚµãÖµºÍ vstr ÏàµÈµÄÁĞ±í½Úµã£¬²¢·µ»Ø¸Ã½ÚµãµÄÖ¸Õë¡£
  * 
  * Skip 'skip' entries between every comparison. 
  *
- * æ¯æ¬¡æ¯”å¯¹ä¹‹å‰éƒ½è·³è¿‡ skip ä¸ªèŠ‚ç‚¹ã€‚
+ * Ã¿´Î±È¶ÔÖ®Ç°¶¼Ìø¹ı skip ¸ö½Úµã¡£
  *
  * Returns NULL when the field could not be found. 
  *
- * å¦‚æœæ‰¾ä¸åˆ°ç›¸åº”çš„èŠ‚ç‚¹ï¼Œåˆ™è¿”å› NULL ã€‚
+ * Èç¹ûÕÒ²»µ½ÏàÓ¦µÄ½Úµã£¬Ôò·µ»Ø NULL ¡£
  *
  * T = O(N^2)
  */
-unsigned char *ziplistFind(unsigned char *p, unsigned char *vstr, unsigned int vlen, unsigned int skip) {
+unsigned char *ziplistFind(unsigned char *zl, unsigned char *p, unsigned char *vstr, unsigned int vlen, unsigned int skip) {
     int skipcnt = 0;
     unsigned char vencoding = 0;
     long long vll = 0;
+    size_t zlbytes = ziplistBlobLen(zl);
 
-    // åªè¦æœªåˆ°è¾¾åˆ—è¡¨æœ«ç«¯ï¼Œå°±ä¸€ç›´è¿­ä»£
-    // T = O(N^2)
-    while (p[0] != ZIP_END) {
-        unsigned int prevlensize, encoding, lensize, len;
+    // Ö»ÒªÎ´µ½´ïÁĞ±íÄ©¶Ë£¬¾ÍÒ»Ö±µü´ú
+    // T = O(N^2)    while (p[0] != ZIP_END) {
+        struct zlentry e;
         unsigned char *q;
 
-        ZIP_DECODE_PREVLENSIZE(p, prevlensize);
-        ZIP_DECODE_LENGTH(p + prevlensize, encoding, lensize, len);
-        q = p + prevlensize + lensize;
+        assert(zipEntrySafe(zl, zlbytes, p, &e, 1));
+        q = p + e.prevrawlensize + e.lensize;
 
         if (skipcnt == 0) {
-
             /* Compare current entry with specified entry */
-            // å¯¹æ¯”å­—ç¬¦ä¸²å€¼
+            // ¶Ô±È×Ö·û´®Öµ
             // T = O(N)
-            if (ZIP_IS_STR(encoding)) {
-                if (len == vlen && memcmp(q, vstr, vlen) == 0) {
+            if (ZIP_IS_STR(e.encoding)) {
+                if (e.len == vlen && memcmp(q, vstr, vlen) == 0) {
                     return p;
                 }
             } else {
                 /* Find out if the searched field can be encoded. Note that
                  * we do it only the first time, once done vencoding is set
                  * to non-zero and vll is set to the integer value. */
-                // å› ä¸ºä¼ å…¥å€¼æœ‰å¯èƒ½è¢«ç¼–ç äº†ï¼Œ
-                // æ‰€ä»¥å½“ç¬¬ä¸€æ¬¡è¿›è¡Œå€¼å¯¹æ¯”æ—¶ï¼Œç¨‹åºä¼šå¯¹ä¼ å…¥å€¼è¿›è¡Œè§£ç 
-                // è¿™ä¸ªè§£ç æ“ä½œåªä¼šè¿›è¡Œä¸€æ¬¡
-                if (vencoding == 0) {
+                // ÒòÎª´«ÈëÖµÓĞ¿ÉÄÜ±»±àÂëÁË£¬
+                // ËùÒÔµ±µÚÒ»´Î½øĞĞÖµ¶Ô±ÈÊ±£¬³ÌĞò»á¶Ô´«ÈëÖµ½øĞĞ½âÂë
+                // Õâ¸ö½âÂë²Ù×÷Ö»»á½øĞĞÒ»´Î                if (vencoding == 0) {
                     if (!zipTryEncoding(vstr, vlen, &vll, &vencoding)) {
                         /* If the entry can't be encoded we set it to
                          * UCHAR_MAX so that we don't retry again the next
@@ -1580,10 +1981,9 @@ unsigned char *ziplistFind(unsigned char *p, unsigned char *vstr, unsigned int v
                 /* Compare current entry with specified entry, do it only
                  * if vencoding != UCHAR_MAX because if there is no encoding
                  * possible for the field it can't be a valid integer. */
-                // å¯¹æ¯”æ•´æ•°å€¼
-                if (vencoding != UCHAR_MAX) {
+                // ¶Ô±ÈÕûÊıÖµ                if (vencoding != UCHAR_MAX) {
                     // T = O(1)
-                    long long ll = zipLoadInteger(q, encoding);
+                    long long ll = zipLoadInteger(q, e.encoding);
                     if (ll == vll) {
                         return p;
                     }
@@ -1598,52 +1998,45 @@ unsigned char *ziplistFind(unsigned char *p, unsigned char *vstr, unsigned int v
         }
 
         /* Move to next entry */
-        // åç§»æŒ‡é’ˆï¼ŒæŒ‡å‘åç½®èŠ‚ç‚¹
-        p = q + len;
+        // ºóÒÆÖ¸Õë£¬Ö¸ÏòºóÖÃ½Úµã
+        p = q + e.len;
     }
 
-    // æ²¡æœ‰æ‰¾åˆ°æŒ‡å®šçš„èŠ‚ç‚¹
-    return NULL;
+    // Ã»ÓĞÕÒµ½Ö¸¶¨µÄ½Úµã    return NULL;
 }
 
 /* Return length of ziplist. 
  * 
- * è¿”å› ziplist ä¸­çš„èŠ‚ç‚¹ä¸ªæ•°
+ * ·µ»Ø ziplist ÖĞµÄ½Úµã¸öÊı
  *
  * T = O(N)
  */
 unsigned int ziplistLen(unsigned char *zl) {
-
     unsigned int len = 0;
-
-    // èŠ‚ç‚¹æ•°å°äº UINT16_MAX
-    // T = O(1)
-    if (intrev16ifbe(ZIPLIST_LENGTH(zl)) < UINT16_MAX) {
+    // ½ÚµãÊıĞ¡ÓÚ UINT16_MAX
+    // T = O(1)    if (intrev16ifbe(ZIPLIST_LENGTH(zl)) < UINT16_MAX) {
         len = intrev16ifbe(ZIPLIST_LENGTH(zl));
-
-    // èŠ‚ç‚¹æ•°å¤§äº UINT16_MAX æ—¶ï¼Œéœ€è¦éå†æ•´ä¸ªåˆ—è¡¨æ‰èƒ½è®¡ç®—å‡ºèŠ‚ç‚¹æ•°
-    // T = O(N)
-    } else {
+    // ½ÚµãÊı´óÓÚ UINT16_MAX Ê±£¬ĞèÒª±éÀúÕû¸öÁĞ±í²ÅÄÜ¼ÆËã³ö½ÚµãÊı
+    // T = O(N)    } else {
         unsigned char *p = zl+ZIPLIST_HEADER_SIZE;
+        size_t zlbytes = intrev32ifbe(ZIPLIST_BYTES(zl));
         while (*p != ZIP_END) {
-            p += zipRawEntryLength(p);
+            p += zipRawEntryLengthSafe(zl, zlbytes, p);
             len++;
         }
 
         /* Re-store length if small enough */
         if (len < UINT16_MAX) ZIPLIST_LENGTH(zl) = intrev16ifbe(len);
     }
-
     return len;
 }
 
 /* Return ziplist blob size in bytes. 
  *
- * è¿”å›æ•´ä¸ª ziplist å ç”¨çš„å†…å­˜å­—èŠ‚æ•°
+ * ·µ»ØÕû¸ö ziplist Õ¼ÓÃµÄÄÚ´æ×Ö½ÚÊı
  *
  * T = O(1)
- */
-size_t ziplistBlobLen(unsigned char *zl) {
+ */size_t ziplistBlobLen(unsigned char *zl) {
     return intrev32ifbe(ZIPLIST_BYTES(zl));
 }
 
@@ -1651,28 +2044,28 @@ void ziplistRepr(unsigned char *zl) {
     unsigned char *p;
     int index = 0;
     zlentry entry;
+    size_t zlbytes = ziplistBlobLen(zl);
 
     printf(
-        "{total bytes %d} "
-        "{length %u}\n"
+        "{total bytes %u} "
+        "{num entries %u}\n"
         "{tail offset %u}\n",
         intrev32ifbe(ZIPLIST_BYTES(zl)),
         intrev16ifbe(ZIPLIST_LENGTH(zl)),
         intrev32ifbe(ZIPLIST_TAIL_OFFSET(zl)));
     p = ZIPLIST_ENTRY_HEAD(zl);
     while(*p != ZIP_END) {
-        entry = zipEntry(p);
+        assert(zipEntrySafe(zl, zlbytes, p, &entry, 1));
         printf(
-            "{"
-                "addr 0x%08lx, "
-                "index %2d, "
-                "offset %5ld, "
-                "rl: %5u, "
-                "hs %2u, "
-                "pl: %5u, "
-                "pls: %2u, "
-                "payload %5u"
-            "} ",
+            "{\n"
+                "\taddr 0x%08lx,\n"
+                "\tindex %2d,\n"
+                "\toffset %5lu,\n"
+                "\thdr+entry len: %5u,\n"
+                "\thdr len%2u,\n"
+                "\tprevrawlen: %5u,\n"
+                "\tprevrawlensize: %2u,\n"
+                "\tpayload %5u\n",
             (long unsigned)p,
             index,
             (unsigned long) (p-zl),
@@ -1681,8 +2074,14 @@ void ziplistRepr(unsigned char *zl) {
             entry.prevrawlen,
             entry.prevrawlensize,
             entry.len);
+        printf("\tbytes: ");
+        for (unsigned int i = 0; i < entry.headersize+entry.len; i++) {
+            printf("%02x|",p[i]);
+        }
+        printf("\n");
         p += entry.headersize;
         if (ZIP_IS_STR(entry.encoding)) {
+            printf("\t[str]");
             if (entry.len > 40) {
                 if (fwrite(p,40,1,stdout) == 0) perror("fwrite");
                 printf("...");
@@ -1691,23 +2090,216 @@ void ziplistRepr(unsigned char *zl) {
                     fwrite(p,entry.len,1,stdout) == 0) perror("fwrite");
             }
         } else {
-            printf("%lld", (long long) zipLoadInteger(p,entry.encoding));
+            printf("\t[int]%lld", (long long) zipLoadInteger(p,entry.encoding));
         }
-        printf("\n");
+        printf("\n}\n");
         p += entry.len;
         index++;
     }
     printf("{end}\n\n");
 }
 
-#ifdef ZIPLIST_TEST_MAIN
+/* Validate the integrity of the data structure.
+ * when `deep` is 0, only the integrity of the header is validated.
+ * when `deep` is 1, we scan all the entries one by one. */
+int ziplistValidateIntegrity(unsigned char *zl, size_t size, int deep,
+    ziplistValidateEntryCB entry_cb, void *cb_userdata) {
+    /* check that we can actually read the header. (and ZIP_END) */
+    if (size < ZIPLIST_HEADER_SIZE + ZIPLIST_END_SIZE)
+        return 0;
+
+    /* check that the encoded size in the header must match the allocated size. */
+    size_t bytes = intrev32ifbe(ZIPLIST_BYTES(zl));
+    if (bytes != size)
+        return 0;
+
+    /* the last byte must be the terminator. */
+    if (zl[size - ZIPLIST_END_SIZE] != ZIP_END)
+        return 0;
+
+    /* make sure the tail offset isn't reaching outside the allocation. */
+    if (intrev32ifbe(ZIPLIST_TAIL_OFFSET(zl)) > size - ZIPLIST_END_SIZE)
+        return 0;
+
+    if (!deep)
+        return 1;
+
+    unsigned int count = 0;
+    unsigned char *p = ZIPLIST_ENTRY_HEAD(zl);
+    unsigned char *prev = NULL;
+    size_t prev_raw_size = 0;
+    while(*p != ZIP_END) {
+        struct zlentry e;
+        /* Decode the entry headers and fail if invalid or reaches outside the allocation */
+        if (!zipEntrySafe(zl, size, p, &e, 1))
+            return 0;
+
+        /* Make sure the record stating the prev entry size is correct. */
+        if (e.prevrawlen != prev_raw_size)
+            return 0;
+
+        /* Optionally let the caller validate the entry too. */
+        if (entry_cb && !entry_cb(p, cb_userdata))
+            return 0;
+
+        /* Move to the next entry */
+        prev_raw_size = e.headersize + e.len;
+        prev = p;
+        p += e.headersize + e.len;
+        count++;
+    }
+
+    /* Make sure the <zltail> entry really do point to the start of the last entry. */
+    if (prev != ZIPLIST_ENTRY_TAIL(zl))
+        return 0;
+
+    /* Check that the count in the header is correct */
+    unsigned int header_count = intrev16ifbe(ZIPLIST_LENGTH(zl));
+    if (header_count != UINT16_MAX && count != header_count)
+        return 0;
+
+    return 1;
+}
+
+/* Randomly select a pair of key and value.
+ * total_count is a pre-computed length/2 of the ziplist (to avoid calls to ziplistLen)
+ * 'key' and 'val' are used to store the result key value pair.
+ * 'val' can be NULL if the value is not needed. */
+void ziplistRandomPair(unsigned char *zl, unsigned long total_count, ziplistEntry *key, ziplistEntry *val) {
+    int ret;
+    unsigned char *p;
+
+    /* Avoid div by zero on corrupt ziplist */
+    assert(total_count);
+
+    /* Generate even numbers, because ziplist saved K-V pair */
+    int r = (rand() % total_count) * 2;
+    p = ziplistIndex(zl, r);
+    ret = ziplistGet(p, &key->sval, &key->slen, &key->lval);
+    assert(ret != 0);
+
+    if (!val)
+        return;
+    p = ziplistNext(zl, p);
+    ret = ziplistGet(p, &val->sval, &val->slen, &val->lval);
+    assert(ret != 0);
+}
+
+/* int compare for qsort */
+int uintCompare(const void *a, const void *b) {
+    return (*(unsigned int *) a - *(unsigned int *) b);
+}
+
+/* Helper method to store a string into from val or lval into dest */
+static inline void ziplistSaveValue(unsigned char *val, unsigned int len, long long lval, ziplistEntry *dest) {
+    dest->sval = val;
+    dest->slen = len;
+    dest->lval = lval;
+}
+
+/* Randomly select count of key value pairs and store into 'keys' and
+ * 'vals' args. The order of the picked entries is random, and the selections
+ * are non-unique (repetitions are possible).
+ * The 'vals' arg can be NULL in which case we skip these. */
+void ziplistRandomPairs(unsigned char *zl, unsigned int count, ziplistEntry *keys, ziplistEntry *vals) {
+    unsigned char *p, *key, *value;
+    unsigned int klen = 0, vlen = 0;
+    long long klval = 0, vlval = 0;
+
+    /* Notice: the index member must be first due to the use in uintCompare */
+    typedef struct {
+        unsigned int index;
+        unsigned int order;
+    } rand_pick;
+    rand_pick *picks = zmalloc(sizeof(rand_pick)*count);
+    unsigned int total_size = ziplistLen(zl)/2;
+
+    /* Avoid div by zero on corrupt ziplist */
+    assert(total_size);
+
+    /* create a pool of random indexes (some may be duplicate). */
+    for (unsigned int i = 0; i < count; i++) {
+        picks[i].index = (rand() % total_size) * 2; /* Generate even indexes */
+        /* keep track of the order we picked them */
+        picks[i].order = i;
+    }
+
+    /* sort by indexes. */
+    qsort(picks, count, sizeof(rand_pick), uintCompare);
+
+    /* fetch the elements form the ziplist into a output array respecting the original order. */
+    unsigned int zipindex = 0, pickindex = 0;
+    p = ziplistIndex(zl, 0);
+    while (ziplistGet(p, &key, &klen, &klval) && pickindex < count) {
+        p = ziplistNext(zl, p);
+        assert(ziplistGet(p, &value, &vlen, &vlval));
+        while (pickindex < count && zipindex == picks[pickindex].index) {
+            int storeorder = picks[pickindex].order;
+            ziplistSaveValue(key, klen, klval, &keys[storeorder]);
+            if (vals)
+                ziplistSaveValue(value, vlen, vlval, &vals[storeorder]);
+             pickindex++;
+        }
+        zipindex += 2;
+        p = ziplistNext(zl, p);
+    }
+
+    zfree(picks);
+}
+
+/* Randomly select count of key value pairs and store into 'keys' and
+ * 'vals' args. The selections are unique (no repetitions), and the order of
+ * the picked entries is NOT-random.
+ * The 'vals' arg can be NULL in which case we skip these.
+ * The return value is the number of items picked which can be lower than the
+ * requested count if the ziplist doesn't hold enough pairs. */
+unsigned int ziplistRandomPairsUnique(unsigned char *zl, unsigned int count, ziplistEntry *keys, ziplistEntry *vals) {
+    unsigned char *p, *key;
+    unsigned int klen = 0;
+    long long klval = 0;
+    unsigned int total_size = ziplistLen(zl)/2;
+    unsigned int index = 0;
+    if (count > total_size)
+        count = total_size;
+
+    /* To only iterate once, every time we try to pick a member, the probability
+     * we pick it is the quotient of the count left we want to pick and the
+     * count still we haven't visited in the dict, this way, we could make every
+     * member be equally picked.*/
+    p = ziplistIndex(zl, 0);
+    unsigned int picked = 0, remaining = count;
+    while (picked < count && p) {
+        double randomDouble = ((double)rand()) / RAND_MAX;
+        double threshold = ((double)remaining) / (total_size - index);
+        if (randomDouble <= threshold) {
+            assert(ziplistGet(p, &key, &klen, &klval));
+            ziplistSaveValue(key, klen, klval, &keys[picked]);
+            p = ziplistNext(zl, p);
+            assert(p);
+            if (vals) {
+                assert(ziplistGet(p, &key, &klen, &klval));
+                ziplistSaveValue(key, klen, klval, &vals[picked]);
+            }
+            remaining--;
+            picked++;
+        } else {
+            p = ziplistNext(zl, p);
+            assert(p);
+        }
+        p = ziplistNext(zl, p);
+        index++;
+    }
+    return picked;
+}
+
+#ifdef REDIS_TEST
 #include <sys/time.h>
 #include "adlist.h"
 #include "sds.h"
 
 #define debug(f, ...) { if (DEBUG) printf(f, __VA_ARGS__); }
 
-unsigned char *createList() {
+static unsigned char *createList() {
     unsigned char *zl = ziplistNew();
     zl = ziplistPush(zl, (unsigned char*)"foo", 3, ZIPLIST_TAIL);
     zl = ziplistPush(zl, (unsigned char*)"quux", 4, ZIPLIST_TAIL);
@@ -1716,7 +2308,7 @@ unsigned char *createList() {
     return zl;
 }
 
-unsigned char *createIntList() {
+static unsigned char *createIntList() {
     unsigned char *zl = ziplistNew();
     char buf[32];
 
@@ -1735,13 +2327,13 @@ unsigned char *createIntList() {
     return zl;
 }
 
-long long usec(void) {
+static long long usec(void) {
     struct timeval tv;
     gettimeofday(&tv,NULL);
     return (((long long)tv.tv_sec)*1000000)+tv.tv_usec;
 }
 
-void stress(int pos, int num, int maxsize, int dnum) {
+static void stress(int pos, int num, int maxsize, int dnum) {
     int i,j,k;
     unsigned char *zl;
     char posstr[2][5] = { "HEAD", "TAIL" };
@@ -1764,7 +2356,7 @@ void stress(int pos, int num, int maxsize, int dnum) {
     }
 }
 
-void pop(unsigned char *zl, int where) {
+static unsigned char *pop(unsigned char *zl, int where) {
     unsigned char *p, *vstr;
     unsigned int vlen;
     long long vlong;
@@ -1776,20 +2368,22 @@ void pop(unsigned char *zl, int where) {
         else
             printf("Pop tail: ");
 
-        if (vstr)
+        if (vstr) {
             if (vlen && fwrite(vstr,vlen,1,stdout) == 0) perror("fwrite");
-        else
+        }
+        else {
             printf("%lld", vlong);
+        }
 
         printf("\n");
-        ziplistDeleteRange(zl,-1,1);
+        return ziplistDelete(zl,&p);
     } else {
         printf("ERROR: Could not pop\n");
         exit(1);
     }
 }
 
-int randstring(char *target, unsigned int min, unsigned int max) {
+static int randstring(char *target, unsigned int min, unsigned int max) {
     int p = 0;
     int len = min+rand()%(max-min+1);
     int minval, maxval;
@@ -1815,49 +2409,80 @@ int randstring(char *target, unsigned int min, unsigned int max) {
     return len;
 }
 
-void verify(unsigned char *zl, zlentry *e) {
-    int i;
+static void verify(unsigned char *zl, zlentry *e) {
     int len = ziplistLen(zl);
     zlentry _e;
 
-    for (i = 0; i < len; i++) {
+    ZIPLIST_ENTRY_ZERO(&_e);
+
+    for (int i = 0; i < len; i++) {
         memset(&e[i], 0, sizeof(zlentry));
-        e[i] = zipEntry(ziplistIndex(zl, i));
+        zipEntry(ziplistIndex(zl, i), &e[i]);
 
         memset(&_e, 0, sizeof(zlentry));
-        _e = zipEntry(ziplistIndex(zl, -len+i));
+        zipEntry(ziplistIndex(zl, -len+i), &_e);
 
         assert(memcmp(&e[i], &_e, sizeof(zlentry)) == 0);
     }
 }
 
-int main(int argc, char **argv) {
+static unsigned char *insertHelper(unsigned char *zl, char ch, size_t len, unsigned char *pos) {
+    assert(len <= ZIP_BIG_PREVLEN);
+    unsigned char data[ZIP_BIG_PREVLEN] = {0};
+    memset(data, ch, len);
+    return ziplistInsert(zl, pos, data, len);
+}
+
+static int compareHelper(unsigned char *zl, char ch, size_t len, int index) {
+    assert(len <= ZIP_BIG_PREVLEN);
+    unsigned char data[ZIP_BIG_PREVLEN] = {0};
+    memset(data, ch, len);
+    unsigned char *p = ziplistIndex(zl, index);
+    assert(p != NULL);
+    return ziplistCompare(p, data, len);
+}
+
+static size_t strEntryBytesSmall(size_t slen) {
+    return slen + zipStorePrevEntryLength(NULL, 0) + zipStoreEntryEncoding(NULL, 0, slen);
+}
+
+static size_t strEntryBytesLarge(size_t slen) {
+    return slen + zipStorePrevEntryLength(NULL, ZIP_BIG_PREVLEN) + zipStoreEntryEncoding(NULL, 0, slen);
+}
+
+/* ./redis-server test ziplist <randomseed> --accurate */
+int ziplistTest(int argc, char **argv, int accurate) {
     unsigned char *zl, *p;
     unsigned char *entry;
     unsigned int elen;
     long long value;
+    int iteration;
 
     /* If an argument is given, use it as the random seed. */
-    if (argc == 2)
-        srand(atoi(argv[1]));
+    if (argc >= 4)
+        srand(atoi(argv[3]));
 
     zl = createIntList();
     ziplistRepr(zl);
 
+    zfree(zl);
+
     zl = createList();
     ziplistRepr(zl);
 
-    pop(zl,ZIPLIST_TAIL);
+    zl = pop(zl,ZIPLIST_TAIL);
     ziplistRepr(zl);
 
-    pop(zl,ZIPLIST_HEAD);
+    zl = pop(zl,ZIPLIST_HEAD);
     ziplistRepr(zl);
 
-    pop(zl,ZIPLIST_TAIL);
+    zl = pop(zl,ZIPLIST_TAIL);
     ziplistRepr(zl);
 
-    pop(zl,ZIPLIST_TAIL);
+    zl = pop(zl,ZIPLIST_TAIL);
     ziplistRepr(zl);
+
+    zfree(zl);
 
     printf("Get element at index 3:\n");
     {
@@ -1874,6 +2499,7 @@ int main(int argc, char **argv) {
             printf("%lld\n", value);
         }
         printf("\n");
+        zfree(zl);
     }
 
     printf("Get element at index 4 (out of range):\n");
@@ -1883,10 +2509,11 @@ int main(int argc, char **argv) {
         if (p == NULL) {
             printf("No entry\n");
         } else {
-            printf("ERROR: Out of range index should return NULL, returned offset: %ld\n", p-zl);
+            printf("ERROR: Out of range index should return NULL, returned offset: %ld\n", (long)(p-zl));
             return 1;
         }
         printf("\n");
+        zfree(zl);
     }
 
     printf("Get element at index -1 (last element):\n");
@@ -1904,6 +2531,7 @@ int main(int argc, char **argv) {
             printf("%lld\n", value);
         }
         printf("\n");
+        zfree(zl);
     }
 
     printf("Get element at index -4 (first element):\n");
@@ -1921,6 +2549,7 @@ int main(int argc, char **argv) {
             printf("%lld\n", value);
         }
         printf("\n");
+        zfree(zl);
     }
 
     printf("Get element at index -5 (reverse out of range):\n");
@@ -1930,10 +2559,11 @@ int main(int argc, char **argv) {
         if (p == NULL) {
             printf("No entry\n");
         } else {
-            printf("ERROR: Out of range index should return NULL, returned offset: %ld\n", p-zl);
+            printf("ERROR: Out of range index should return NULL, returned offset: %ld\n", (long)(p-zl));
             return 1;
         }
         printf("\n");
+        zfree(zl);
     }
 
     printf("Iterate list from 0 to end:\n");
@@ -1951,6 +2581,7 @@ int main(int argc, char **argv) {
             printf("\n");
         }
         printf("\n");
+        zfree(zl);
     }
 
     printf("Iterate list from 1 to end:\n");
@@ -1968,6 +2599,7 @@ int main(int argc, char **argv) {
             printf("\n");
         }
         printf("\n");
+        zfree(zl);
     }
 
     printf("Iterate list from 2 to end:\n");
@@ -1985,6 +2617,7 @@ int main(int argc, char **argv) {
             printf("\n");
         }
         printf("\n");
+        zfree(zl);
     }
 
     printf("Iterate starting out of range:\n");
@@ -1997,6 +2630,7 @@ int main(int argc, char **argv) {
             printf("ERROR\n");
         }
         printf("\n");
+        zfree(zl);
     }
 
     printf("Iterate from back to front:\n");
@@ -2014,6 +2648,7 @@ int main(int argc, char **argv) {
             printf("\n");
         }
         printf("\n");
+        zfree(zl);
     }
 
     printf("Iterate from back to front, deleting all items:\n");
@@ -2032,6 +2667,7 @@ int main(int argc, char **argv) {
             printf("\n");
         }
         printf("\n");
+        zfree(zl);
     }
 
     printf("Delete inclusive range 0,0:\n");
@@ -2039,6 +2675,7 @@ int main(int argc, char **argv) {
         zl = createList();
         zl = ziplistDeleteRange(zl, 0, 1);
         ziplistRepr(zl);
+        zfree(zl);
     }
 
     printf("Delete inclusive range 0,1:\n");
@@ -2046,6 +2683,7 @@ int main(int argc, char **argv) {
         zl = createList();
         zl = ziplistDeleteRange(zl, 0, 2);
         ziplistRepr(zl);
+        zfree(zl);
     }
 
     printf("Delete inclusive range 1,2:\n");
@@ -2053,6 +2691,7 @@ int main(int argc, char **argv) {
         zl = createList();
         zl = ziplistDeleteRange(zl, 1, 2);
         ziplistRepr(zl);
+        zfree(zl);
     }
 
     printf("Delete with start index out of range:\n");
@@ -2060,6 +2699,7 @@ int main(int argc, char **argv) {
         zl = createList();
         zl = ziplistDeleteRange(zl, 5, 1);
         ziplistRepr(zl);
+        zfree(zl);
     }
 
     printf("Delete with num overflow:\n");
@@ -2067,6 +2707,7 @@ int main(int argc, char **argv) {
         zl = createList();
         zl = ziplistDeleteRange(zl, 1, 5);
         ziplistRepr(zl);
+        zfree(zl);
     }
 
     printf("Delete foo while iterating:\n");
@@ -2091,11 +2732,47 @@ int main(int argc, char **argv) {
         }
         printf("\n");
         ziplistRepr(zl);
+        zfree(zl);
+    }
+
+    printf("Replace with same size:\n");
+    {
+        zl = createList(); /* "hello", "foo", "quux", "1024" */
+        unsigned char *orig_zl = zl;
+        p = ziplistIndex(zl, 0);
+        zl = ziplistReplace(zl, p, (unsigned char*)"zoink", 5);
+        p = ziplistIndex(zl, 3);
+        zl = ziplistReplace(zl, p, (unsigned char*)"yy", 2);
+        p = ziplistIndex(zl, 1);
+        zl = ziplistReplace(zl, p, (unsigned char*)"65536", 5);
+        p = ziplistIndex(zl, 0);
+        assert(!memcmp((char*)p,
+                       "\x00\x05zoink"
+                       "\x07\xf0\x00\x00\x01" /* 65536 as int24 */
+                       "\x05\x04quux" "\x06\x02yy" "\xff",
+                       23));
+        assert(zl == orig_zl); /* no reallocations have happened */
+        zfree(zl);
+        printf("SUCCESS\n\n");
+    }
+
+    printf("Replace with different size:\n");
+    {
+        zl = createList(); /* "hello", "foo", "quux", "1024" */
+        p = ziplistIndex(zl, 1);
+        zl = ziplistReplace(zl, p, (unsigned char*)"squirrel", 8);
+        p = ziplistIndex(zl, 0);
+        assert(!strncmp((char*)p,
+                        "\x00\x05hello" "\x07\x08squirrel" "\x0a\x04quux"
+                        "\x06\xc0\x00\x04" "\xff",
+                        28));
+        zfree(zl);
+        printf("SUCCESS\n\n");
     }
 
     printf("Regression test for >255 byte strings:\n");
     {
-        char v1[257],v2[257];
+        char v1[257] = {0}, v2[257] = {0};
         memset(v1,'x',256);
         memset(v2,'y',256);
         zl = ziplistNew();
@@ -2110,13 +2787,15 @@ int main(int argc, char **argv) {
         assert(ziplistGet(p,&entry,&elen,&value));
         assert(strncmp(v2,(char*)entry,elen) == 0);
         printf("SUCCESS\n\n");
+        zfree(zl);
     }
 
     printf("Regression test deleting next to last entries:\n");
     {
-        char v[3][257];
-        zlentry e[3];
-        int i;
+        char v[3][257] = {{0}};
+        zlentry e[3] = {{.prevrawlensize = 0, .prevrawlen = 0, .lensize = 0,
+                         .len = 0, .headersize = 0, .encoding = 0, .p = NULL}};
+        size_t i;
 
         for (i = 0; i < (sizeof(v)/sizeof(v[0])); i++) {
             memset(v[i], 'a' + i, sizeof(v[0]));
@@ -2147,10 +2826,12 @@ int main(int argc, char **argv) {
         assert(e[1].prevrawlensize == 5);
 
         printf("SUCCESS\n\n");
+        zfree(zl);
     }
 
     printf("Create long list and check indices:\n");
     {
+        unsigned long long start = usec();
         zl = ziplistNew();
         char buf[32];
         int i,len;
@@ -2167,7 +2848,8 @@ int main(int argc, char **argv) {
             assert(ziplistGet(p,NULL,NULL,&value));
             assert(999-i == value);
         }
-        printf("SUCCESS\n\n");
+        printf("SUCCESS. usec=%lld\n\n", usec()-start);
+        zfree(zl);
     }
 
     printf("Compare strings with ziplist entries:\n");
@@ -2193,10 +2875,87 @@ int main(int argc, char **argv) {
             return 1;
         }
         printf("SUCCESS\n\n");
+        zfree(zl);
+    }
+
+    printf("Merge test:\n");
+    {
+        /* create list gives us: [hello, foo, quux, 1024] */
+        zl = createList();
+        unsigned char *zl2 = createList();
+
+        unsigned char *zl3 = ziplistNew();
+        unsigned char *zl4 = ziplistNew();
+
+        if (ziplistMerge(&zl4, &zl4)) {
+            printf("ERROR: Allowed merging of one ziplist into itself.\n");
+            return 1;
+        }
+
+        /* Merge two empty ziplists, get empty result back. */
+        zl4 = ziplistMerge(&zl3, &zl4);
+        ziplistRepr(zl4);
+        if (ziplistLen(zl4)) {
+            printf("ERROR: Merging two empty ziplists created entries.\n");
+            return 1;
+        }
+        zfree(zl4);
+
+        zl2 = ziplistMerge(&zl, &zl2);
+        /* merge gives us: [hello, foo, quux, 1024, hello, foo, quux, 1024] */
+        ziplistRepr(zl2);
+
+        if (ziplistLen(zl2) != 8) {
+            printf("ERROR: Merged length not 8, but: %u\n", ziplistLen(zl2));
+            return 1;
+        }
+
+        p = ziplistIndex(zl2,0);
+        if (!ziplistCompare(p,(unsigned char*)"hello",5)) {
+            printf("ERROR: not \"hello\"\n");
+            return 1;
+        }
+        if (ziplistCompare(p,(unsigned char*)"hella",5)) {
+            printf("ERROR: \"hella\"\n");
+            return 1;
+        }
+
+        p = ziplistIndex(zl2,3);
+        if (!ziplistCompare(p,(unsigned char*)"1024",4)) {
+            printf("ERROR: not \"1024\"\n");
+            return 1;
+        }
+        if (ziplistCompare(p,(unsigned char*)"1025",4)) {
+            printf("ERROR: \"1025\"\n");
+            return 1;
+        }
+
+        p = ziplistIndex(zl2,4);
+        if (!ziplistCompare(p,(unsigned char*)"hello",5)) {
+            printf("ERROR: not \"hello\"\n");
+            return 1;
+        }
+        if (ziplistCompare(p,(unsigned char*)"hella",5)) {
+            printf("ERROR: \"hella\"\n");
+            return 1;
+        }
+
+        p = ziplistIndex(zl2,7);
+        if (!ziplistCompare(p,(unsigned char*)"1024",4)) {
+            printf("ERROR: not \"1024\"\n");
+            return 1;
+        }
+        if (ziplistCompare(p,(unsigned char*)"1025",4)) {
+            printf("ERROR: \"1025\"\n");
+            return 1;
+        }
+        printf("SUCCESS\n\n");
+        zfree(zl);
     }
 
     printf("Stress with random payloads of different encoding:\n");
     {
+        unsigned long long start = usec();
         int i,j,len,where;
         unsigned char *p;
         char buf[1024];
@@ -2209,10 +2968,11 @@ int main(int argc, char **argv) {
         unsigned int slen;
         long long sval;
 
-        for (i = 0; i < 20000; i++) {
+        iteration = accurate ? 20000 : 20;
+        for (i = 0; i < iteration; i++) {
             zl = ziplistNew();
             ref = listCreate();
-            listSetFreeMethod(ref,sdsfree);
+            listSetFreeMethod(ref,(void (*)(void*))sdsfree);
             len = rand() % 256;
 
             /* Create lists */
@@ -2269,16 +3029,162 @@ int main(int argc, char **argv) {
             zfree(zl);
             listRelease(ref);
         }
-        printf("SUCCESS\n\n");
+        printf("Done. usec=%lld\n\n", usec()-start);
     }
 
     printf("Stress with variable ziplist size:\n");
     {
-        stress(ZIPLIST_HEAD,100000,16384,256);
-        stress(ZIPLIST_TAIL,100000,16384,256);
+        unsigned long long start = usec();
+        int maxsize = accurate ? 16384 : 16;
+        stress(ZIPLIST_HEAD,100000,maxsize,256);
+        stress(ZIPLIST_TAIL,100000,maxsize,256);
+        printf("Done. usec=%lld\n\n", usec()-start);
+    }
+
+    /* Benchmarks */
+    {
+        zl = ziplistNew();
+        iteration = accurate ? 100000 : 100;
+        for (int i=0; i<iteration; i++) {
+            char buf[4096] = "asdf";
+            zl = ziplistPush(zl, (unsigned char*)buf, 4, ZIPLIST_TAIL);
+            zl = ziplistPush(zl, (unsigned char*)buf, 40, ZIPLIST_TAIL);
+            zl = ziplistPush(zl, (unsigned char*)buf, 400, ZIPLIST_TAIL);
+            zl = ziplistPush(zl, (unsigned char*)buf, 4000, ZIPLIST_TAIL);
+            zl = ziplistPush(zl, (unsigned char*)"1", 1, ZIPLIST_TAIL);
+            zl = ziplistPush(zl, (unsigned char*)"10", 2, ZIPLIST_TAIL);
+            zl = ziplistPush(zl, (unsigned char*)"100", 3, ZIPLIST_TAIL);
+            zl = ziplistPush(zl, (unsigned char*)"1000", 4, ZIPLIST_TAIL);
+            zl = ziplistPush(zl, (unsigned char*)"10000", 5, ZIPLIST_TAIL);
+            zl = ziplistPush(zl, (unsigned char*)"100000", 6, ZIPLIST_TAIL);
+        }
+
+        printf("Benchmark ziplistFind:\n");
+        {
+            unsigned long long start = usec();
+            for (int i = 0; i < 2000; i++) {
+                unsigned char *fptr = ziplistIndex(zl, ZIPLIST_HEAD);
+                fptr = ziplistFind(zl, fptr, (unsigned char*)"nothing", 7, 1);
+            }
+            printf("%lld\n", usec()-start);
+        }
+
+        printf("Benchmark ziplistIndex:\n");
+        {
+            unsigned long long start = usec();
+            for (int i = 0; i < 2000; i++) {
+                ziplistIndex(zl, 99999);
+            }
+            printf("%lld\n", usec()-start);
+        }
+
+        printf("Benchmark ziplistValidateIntegrity:\n");
+        {
+            unsigned long long start = usec();
+            for (int i = 0; i < 2000; i++) {
+                ziplistValidateIntegrity(zl, ziplistBlobLen(zl), 1, NULL, NULL);
+            }
+            printf("%lld\n", usec()-start);
+        }
+
+        zfree(zl);
+    }
+
+    printf("Stress __ziplistCascadeUpdate:\n");
+    {
+        char data[ZIP_BIG_PREVLEN];
+        zl = ziplistNew();
+        iteration = accurate ? 100000 : 100;
+        for (int i = 0; i < iteration; i++) {
+            zl = ziplistPush(zl, (unsigned char*)data, ZIP_BIG_PREVLEN-4, ZIPLIST_TAIL);
+        }
+        unsigned long long start = usec();
+        zl = ziplistPush(zl, (unsigned char*)data, ZIP_BIG_PREVLEN-3, ZIPLIST_HEAD);
+        printf("Done. usec=%lld\n\n", usec()-start);
+        zfree(zl);
+    }
+
+    printf("Edge cases of __ziplistCascadeUpdate:\n");
+    {
+        /* Inserting a entry with data length greater than ZIP_BIG_PREVLEN-4 
+         * will leads to cascade update. */
+        size_t s1 = ZIP_BIG_PREVLEN-4, s2 = ZIP_BIG_PREVLEN-3;
+        zl = ziplistNew();
+
+        zlentry e[4] = {{.prevrawlensize = 0, .prevrawlen = 0, .lensize = 0,
+                         .len = 0, .headersize = 0, .encoding = 0, .p = NULL}};
+
+        zl = insertHelper(zl, 'a', s1, ZIPLIST_ENTRY_HEAD(zl));
+        verify(zl, e);
+
+        assert(e[0].prevrawlensize == 1 && e[0].prevrawlen == 0);
+        assert(compareHelper(zl, 'a', s1, 0));
+        ziplistRepr(zl);
+
+        /* No expand. */
+        zl = insertHelper(zl, 'b', s1, ZIPLIST_ENTRY_HEAD(zl));
+        verify(zl, e);
+
+        assert(e[0].prevrawlensize == 1 && e[0].prevrawlen == 0);
+        assert(compareHelper(zl, 'b', s1, 0));
+
+        assert(e[1].prevrawlensize == 1 && e[1].prevrawlen == strEntryBytesSmall(s1));
+        assert(compareHelper(zl, 'a', s1, 1));
+
+        ziplistRepr(zl);
+
+        /* Expand(tail included). */
+        zl = insertHelper(zl, 'c', s2, ZIPLIST_ENTRY_HEAD(zl));
+        verify(zl, e);
+
+        assert(e[0].prevrawlensize == 1 && e[0].prevrawlen == 0);
+        assert(compareHelper(zl, 'c', s2, 0));
+
+        assert(e[1].prevrawlensize == 5 && e[1].prevrawlen == strEntryBytesSmall(s2));
+        assert(compareHelper(zl, 'b', s1, 1));
+
+        assert(e[2].prevrawlensize == 5 && e[2].prevrawlen == strEntryBytesLarge(s1));
+        assert(compareHelper(zl, 'a', s1, 2));
+
+        ziplistRepr(zl);
+
+        /* Expand(only previous head entry). */
+        zl = insertHelper(zl, 'd', s2, ZIPLIST_ENTRY_HEAD(zl));
+        verify(zl, e);
+
+        assert(e[0].prevrawlensize == 1 && e[0].prevrawlen == 0);
+        assert(compareHelper(zl, 'd', s2, 0));
+
+        assert(e[1].prevrawlensize == 5 && e[1].prevrawlen == strEntryBytesSmall(s2));
+        assert(compareHelper(zl, 'c', s2, 1));
+
+        assert(e[2].prevrawlensize == 5 && e[2].prevrawlen == strEntryBytesLarge(s2));
+        assert(compareHelper(zl, 'b', s1, 2));
+
+        assert(e[3].prevrawlensize == 5 && e[3].prevrawlen == strEntryBytesLarge(s1));
+        assert(compareHelper(zl, 'a', s1, 3));
+
+        ziplistRepr(zl);
+
+        /* Delete from mid. */
+        unsigned char *p = ziplistIndex(zl, 2);
+        zl = ziplistDelete(zl, &p);
+        verify(zl, e);
+
+        assert(e[0].prevrawlensize == 1 && e[0].prevrawlen == 0);
+        assert(compareHelper(zl, 'd', s2, 0));
+
+        assert(e[1].prevrawlensize == 5 && e[1].prevrawlen == strEntryBytesSmall(s2));
+        assert(compareHelper(zl, 'c', s2, 1));
+
+        assert(e[2].prevrawlensize == 5 && e[2].prevrawlen == strEntryBytesLarge(s2));
+        assert(compareHelper(zl, 'a', s1, 2));
+
+        ziplistRepr(zl);
+
+        zfree(zl);
     }
 
     return 0;
 }
-
 #endif

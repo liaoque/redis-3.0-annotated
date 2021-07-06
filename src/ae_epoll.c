@@ -32,49 +32,46 @@
 #include <sys/epoll.h>
 
 /*
- * äº‹ä»¶çŠ¶æ€
+ * ÊÂ¼ş×´Ì¬
  */
 typedef struct aeApiState {
 
-    // epoll_event å®ä¾‹æè¿°ç¬¦
+    // epoll_event ÊµÀıÃèÊö·û
     int epfd;
 
-    // äº‹ä»¶æ§½
+    // ÊÂ¼ş²Û
     struct epoll_event *events;
 
 } aeApiState;
 
 /*
- * åˆ›å»ºä¸€ä¸ªæ–°çš„ epoll å®ä¾‹ï¼Œå¹¶å°†å®ƒèµ‹å€¼ç»™ eventLoop
+ * ´´½¨Ò»¸öĞÂµÄ epoll ÊµÀı£¬²¢½«Ëü¸³Öµ¸ø eventLoop
  */
 static int aeApiCreate(aeEventLoop *eventLoop) {
-
     aeApiState *state = zmalloc(sizeof(aeApiState));
 
     if (!state) return -1;
-
-    // åˆå§‹åŒ–äº‹ä»¶æ§½ç©ºé—´
+    // ³õÊ¼»¯ÊÂ¼ş²Û¿Õ¼ä
     state->events = zmalloc(sizeof(struct epoll_event)*eventLoop->setsize);
     if (!state->events) {
         zfree(state);
         return -1;
     }
-
-    // åˆ›å»º epoll å®ä¾‹
+    // ´´½¨ epoll ÊµÀı
     state->epfd = epoll_create(1024); /* 1024 is just a hint for the kernel */
     if (state->epfd == -1) {
         zfree(state->events);
         zfree(state);
         return -1;
     }
-
-    // èµ‹å€¼ç»™ eventLoop
+    anetCloexec(state->epfd);
+    // ¸³Öµ¸ø eventLoop
     eventLoop->apidata = state;
     return 0;
 }
 
 /*
- * è°ƒæ•´äº‹ä»¶æ§½å¤§å°
+ * µ÷ÕûÊÂ¼ş²Û´óĞ¡
  */
 static int aeApiResize(aeEventLoop *eventLoop, int setsize) {
     aeApiState *state = eventLoop->apidata;
@@ -84,7 +81,7 @@ static int aeApiResize(aeEventLoop *eventLoop, int setsize) {
 }
 
 /*
- * é‡Šæ”¾ epoll å®ä¾‹å’Œäº‹ä»¶æ§½
+ * ÊÍ·Å epoll ÊµÀıºÍÊÂ¼ş²Û
  */
 static void aeApiFree(aeEventLoop *eventLoop) {
     aeApiState *state = eventLoop->apidata;
@@ -95,48 +92,42 @@ static void aeApiFree(aeEventLoop *eventLoop) {
 }
 
 /*
- * å…³è”ç»™å®šäº‹ä»¶åˆ° fd
+ * ¹ØÁª¸ø¶¨ÊÂ¼şµ½ fd
  */
 static int aeApiAddEvent(aeEventLoop *eventLoop, int fd, int mask) {
     aeApiState *state = eventLoop->apidata;
-    struct epoll_event ee;
-
+    struct epoll_event ee = {0}; /* avoid valgrind warning */
     /* If the fd was already monitored for some event, we need a MOD
-     * operation. Otherwise we need an ADD operation. 
+     * operation. Otherwise we need an ADD operation. */
      *
-     * å¦‚æœ fd æ²¡æœ‰å…³è”ä»»ä½•äº‹ä»¶ï¼Œé‚£ä¹ˆè¿™æ˜¯ä¸€ä¸ª ADD æ“ä½œã€‚
+     * Èç¹û fd Ã»ÓĞ¹ØÁªÈÎºÎÊÂ¼ş£¬ÄÇÃ´ÕâÊÇÒ»¸ö ADD ²Ù×÷¡£
      *
-     * å¦‚æœå·²ç»å…³è”äº†æŸä¸ª/æŸäº›äº‹ä»¶ï¼Œé‚£ä¹ˆè¿™æ˜¯ä¸€ä¸ª MOD æ“ä½œã€‚
+     * Èç¹ûÒÑ¾­¹ØÁªÁËÄ³¸ö/Ä³Ğ©ÊÂ¼ş£¬ÄÇÃ´ÕâÊÇÒ»¸ö MOD ²Ù×÷¡£
      */
     int op = eventLoop->events[fd].mask == AE_NONE ?
             EPOLL_CTL_ADD : EPOLL_CTL_MOD;
 
-    // æ³¨å†Œäº‹ä»¶åˆ° epoll
+    // ×¢²áÊÂ¼şµ½ epoll
     ee.events = 0;
     mask |= eventLoop->events[fd].mask; /* Merge old events */
     if (mask & AE_READABLE) ee.events |= EPOLLIN;
     if (mask & AE_WRITABLE) ee.events |= EPOLLOUT;
-    ee.data.u64 = 0; /* avoid valgrind warning */
     ee.data.fd = fd;
-
     if (epoll_ctl(state->epfd,op,fd,&ee) == -1) return -1;
-
     return 0;
 }
 
 /*
- * ä» fd ä¸­åˆ é™¤ç»™å®šäº‹ä»¶
+ * ´Ó fd ÖĞÉ¾³ı¸ø¶¨ÊÂ¼ş
  */
 static void aeApiDelEvent(aeEventLoop *eventLoop, int fd, int delmask) {
     aeApiState *state = eventLoop->apidata;
-    struct epoll_event ee;
-
+    struct epoll_event ee = {0}; /* avoid valgrind warning */
     int mask = eventLoop->events[fd].mask & (~delmask);
 
     ee.events = 0;
     if (mask & AE_READABLE) ee.events |= EPOLLIN;
     if (mask & AE_WRITABLE) ee.events |= EPOLLOUT;
-    ee.data.u64 = 0; /* avoid valgrind warning */
     ee.data.fd = fd;
     if (mask != AE_NONE) {
         epoll_ctl(state->epfd,EPOLL_CTL_MOD,fd,&ee);
@@ -148,22 +139,21 @@ static void aeApiDelEvent(aeEventLoop *eventLoop, int fd, int delmask) {
 }
 
 /*
- * è·å–å¯æ‰§è¡Œäº‹ä»¶
+ * »ñÈ¡¿ÉÖ´ĞĞÊÂ¼ş
  */
 static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
     aeApiState *state = eventLoop->apidata;
     int retval, numevents = 0;
 
-    // ç­‰å¾…æ—¶é—´
+    // µÈ´ıÊ±¼ä
     retval = epoll_wait(state->epfd,state->events,eventLoop->setsize,
-            tvp ? (tvp->tv_sec*1000 + tvp->tv_usec/1000) : -1);
-
-    // æœ‰è‡³å°‘ä¸€ä¸ªäº‹ä»¶å°±ç»ªï¼Ÿ
+            tvp ? (tvp->tv_sec*1000 + (tvp->tv_usec + 999)/1000) : -1);
+    // ÓĞÖÁÉÙÒ»¸öÊÂ¼ş¾ÍĞ÷£¿
     if (retval > 0) {
         int j;
 
-        // ä¸ºå·²å°±ç»ªäº‹ä»¶è®¾ç½®ç›¸åº”çš„æ¨¡å¼
-        // å¹¶åŠ å…¥åˆ° eventLoop çš„ fired æ•°ç»„ä¸­
+        // ÎªÒÑ¾ÍĞ÷ÊÂ¼şÉèÖÃÏàÓ¦µÄÄ£Ê½
+        // ²¢¼ÓÈëµ½ eventLoop µÄ fired Êı×éÖĞ
         numevents = retval;
         for (j = 0; j < numevents; j++) {
             int mask = 0;
@@ -171,20 +161,18 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
 
             if (e->events & EPOLLIN) mask |= AE_READABLE;
             if (e->events & EPOLLOUT) mask |= AE_WRITABLE;
-            if (e->events & EPOLLERR) mask |= AE_WRITABLE;
-            if (e->events & EPOLLHUP) mask |= AE_WRITABLE;
-
+            if (e->events & EPOLLERR) mask |= AE_WRITABLE|AE_READABLE;
+            if (e->events & EPOLLHUP) mask |= AE_WRITABLE|AE_READABLE;
             eventLoop->fired[j].fd = e->data.fd;
             eventLoop->fired[j].mask = mask;
         }
     }
-    
-    // è¿”å›å·²å°±ç»ªäº‹ä»¶ä¸ªæ•°
+    // ·µ»ØÒÑ¾ÍĞ÷ÊÂ¼ş¸öÊı
     return numevents;
 }
 
 /*
- * è¿”å›å½“å‰æ­£åœ¨ä½¿ç”¨çš„ poll åº“çš„åå­—
+ * ·µ»Øµ±Ç°ÕıÔÚÊ¹ÓÃµÄ poll ¿âµÄÃû×Ö
  */
 static char *aeApiName(void) {
     return "epoll";
