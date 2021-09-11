@@ -46,8 +46,7 @@
  *
  * T = O(1)
  */
-list *listCreate(void)
-{
+list *listCreate(void) {
     struct list *list;
 
     // 分配内存
@@ -66,8 +65,7 @@ list *listCreate(void)
 
 /* Remove all the elements from the list without destroying the list itself. */
 //  释放整个链表，以及链表中所有节点
-void listEmpty(list *list)
-{
+void listEmpty(list *list) {
     unsigned long len;
     listNode *current, *next;
 
@@ -75,7 +73,7 @@ void listEmpty(list *list)
     current = list->head;
     // 遍历整个链表
     len = list->len;
-    while(len--) {
+    while (len--) {
         next = current->next;
         // 如果有设置值释放函数，那么调用它
         if (list->free) list->free(current->value);
@@ -90,8 +88,7 @@ void listEmpty(list *list)
 /* Free the whole list.
  *
  * This function can't fail. */
-void listRelease(list *list)
-{
+void listRelease(list *list) {
     listEmpty(list);
     // 释放链表结构
     zfree(list);
@@ -112,8 +109,7 @@ void listRelease(list *list)
  *
  * T = O(1)
  */
-list *listAddNodeHead(list *list, void *value)
-{
+list *listAddNodeHead(list *list, void *value) {
     listNode *node;
 
     // 为节点分配内存
@@ -152,8 +148,7 @@ list *listAddNodeHead(list *list, void *value)
  *
  * T = O(1)
  */
-list *listAddNodeTail(list *list, void *value)
-{
+list *listAddNodeTail(list *list, void *value) {
     listNode *node;
 
     // 为新节点分配内存
@@ -239,8 +234,7 @@ list *listInsertNode(list *list, listNode *old_node, void *value, int after) {
  *
  * T = O(1)
  */
-void listDelNode(list *list, listNode *node)
-{
+void listDelNode(list *list, listNode *node) {
     // 调整前置节点的指针
     if (node->prev)
         node->prev->next = node->next;
@@ -277,8 +271,7 @@ void listDelNode(list *list, listNode *node)
  *
  * T = O(1)
  */
-listIter *listGetIterator(list *list, int direction)
-{
+listIter *listGetIterator(list *list, int direction) {
     // 为迭代器分配内存
     listIter *iter;
     if ((iter = zmalloc(sizeof(*iter))) == NULL) return NULL;
@@ -355,8 +348,7 @@ void listRewindTail(list *list, listIter *li) {
  *
  * T = O(1)
  */
-listNode *listNext(listIter *iter)
-{
+listNode *listNext(listIter *iter) {
     listNode *current = iter->next;
 
     if (current != NULL) {
@@ -393,8 +385,7 @@ listNode *listNext(listIter *iter)
  *
  * T = O(N)
  */
-list *listDup(list *orig)
-{
+list *listDup(list *orig) {
     list *copy;
     listIter iter;
     listNode *node;
@@ -408,7 +399,7 @@ list *listDup(list *orig)
     copy->match = orig->match;
     // 迭代整个输入链表
     listRewind(orig, &iter);
-    while((node = listNext(&iter)) != NULL) {
+    while ((node = listNext(&iter)) != NULL) {
         void *value;
 
         // 复制节点值到新节点
@@ -451,14 +442,13 @@ list *listDup(list *orig)
  *
  * T = O(N)
  */
-listNode *listSearchKey(list *list, void *key)
-{
+listNode *listSearchKey(list *list, void *key) {
     listIter iter;
     listNode *node;
 
     // 迭代整个链表
     listRewind(list, &iter);
-    while((node = listNext(&iter)) != NULL) {
+    while ((node = listNext(&iter)) != NULL) {
         // 对比
         if (list->match) {
             if (list->match(node->value, key)) {
@@ -492,13 +482,13 @@ listNode *listIndex(list *list, long index) {
 
     // 如果索引为负数，从表尾开始查找
     if (index < 0) {
-        index = (-index)-1;
+        index = (-index) - 1;
         n = list->tail;
-        while(index-- && n) n = n->prev;
+        while (index-- && n) n = n->prev;
         // 如果索引为正数，从表头开始查找
     } else {
         n = list->head;
-        while(index-- && n) n = n->next;
+        while (index-- && n) n = n->next;
     }
     return n;
 }

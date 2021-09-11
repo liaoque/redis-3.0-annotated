@@ -3821,6 +3821,7 @@ void replicationCron(void) {
             client *slave = ln->value;
 
             // 不检查旧版的从服务器
+            if (slave->replstate == SLAVE_STATE_ONLINE) {
                 if (slave->flags & CLIENT_PRE_PSYNC)
                     continue;
             // 释放超时从服务器

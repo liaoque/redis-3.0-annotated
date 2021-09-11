@@ -176,6 +176,7 @@ int _dictInit(dict *d, dictType *type,
  * 成功创建体积更小的 ht[1] ，可以开始 resize 时，返回 DICT_OK。
  *
  * T = O(N)
+ */
 int dictResize(dict *d)
 {
     unsigned long minimal;
@@ -189,6 +190,7 @@ int dictResize(dict *d)
     // T = O(N)
     return dictExpand(d, minimal);
 }
+
 /* Expand or create the hash table,
  * when malloc_failed is non-NULL, it'll avoid panic if malloc fails (in which case it'll be set to 1).
  * Returns DICT_OK if expand was performed, and DICT_ERR if skipped. */
@@ -243,7 +245,6 @@ int _dictExpand(dict *d, unsigned long size, int *malloc_failed) {
 }
 
 /* return DICT_ERR if expand was not performed
-/*
  * 创建一个新的哈希表，并根据字典的情况，选择以下其中一个动作来进行：
  *
  * 1) 如果字典的 0 号哈希表为空，那么将新哈希表设置为 0 号哈希表

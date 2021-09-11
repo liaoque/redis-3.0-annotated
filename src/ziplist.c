@@ -1321,7 +1321,6 @@ unsigned char *__ziplistDelete(unsigned char *zl, unsigned char *p, unsigned int
 }
 
 /* Insert item at "p".
-/*
  * 根据指针 p 所指定的位置，将长度为 slen 的字符串 s 插入到 zl 中。
  *
  * 函数的返回值为完成插入操作之后的 ziplist
@@ -1628,7 +1627,6 @@ unsigned char *ziplistPush(unsigned char *zl, unsigned char *s, unsigned int sle
 /* Returns an offset to use for iterating with ziplistNext. When the given
  * index is negative, the list is traversed back to front. When the list
  * doesn't contain an element at the provided index, NULL is returned.
-/*
  * 根据给定索引，遍历列表，并返回索引指定节点的指针。
  *
  * 如果索引为正，那么从表头向表尾遍历。
@@ -1727,7 +1725,6 @@ unsigned char *ziplistNext(unsigned char *zl, unsigned char *p) {
 }
 
 /* Return pointer to previous entry in ziplist.
-/*
  * 返回 p 所指向节点的前置节点。
  *
  * 如果 p 所指向为空列表，或者 p 已经指向表头节点，那么返回 NULL 。
@@ -1850,9 +1847,11 @@ unsigned int ziplistGet(unsigned char *p, unsigned char **sstr, unsigned int *sl
  */
 unsigned char *ziplistDeleteRange(unsigned char *zl, int index, unsigned int num) {
     // 根据索引定位到节点
-    // T = O(N)    unsigned char *p = ziplistIndex(zl,index);
+    // T = O(N)
+     unsigned char *p = ziplistIndex(zl,index);
     // 连续删除 num 个节点
-    // T = O(N^2)    return (p == NULL) ? zl : __ziplistDelete(zl,p,num);
+    // T = O(N^2)
+     return (p == NULL) ? zl : __ziplistDelete(zl,p,num);
 }
 
 /* Replaces the entry at p. This is equivalent to a delete and an insert,
@@ -1907,13 +1906,14 @@ unsigned int ziplistCompare(unsigned char *p, unsigned char *sstr, unsigned int 
     if (p[0] == ZIP_END) return 0;
 
     // 取出节点
-    zipEntry(p,
-             &entry); /* no need for "safe" variant since the input pointer was validated by the function that returned it. */
+    zipEntry(p,&entry);
+    /* no need for "safe" variant since the input pointer was validated by the function that returned it. */
     if (ZIP_IS_STR(entry.encoding)) {
         // 节点值为字符串，进行字符串对比
         /* Raw compare */
         if (entry.len == slen) {
-            // T = O(N)            return memcmp(p+entry.headersize,sstr,slen) == 0;
+            // T = O(N)
+             return memcmp(p+entry.headersize,sstr,slen) == 0;
         } else {
             return 0;
         }
@@ -1922,7 +1922,8 @@ unsigned int ziplistCompare(unsigned char *p, unsigned char *sstr, unsigned int 
         /* Try to compare encoded values. Don't compare encoding because
        * different implementations may encoded integers differently. */
         if (zipTryEncoding(sstr, slen, &sval, &sencoding)) {
-            // T = O(1)          zval = zipLoadInteger(p+entry.headersize,entry.encoding);
+            // T = O(1)
+             zval = zipLoadInteger(p+entry.headersize,entry.encoding);
             return zval == sval;
         }
     }
@@ -2011,7 +2012,8 @@ ziplistFind(unsigned char *zl, unsigned char *p, unsigned char *vstr, unsigned i
         p = q + e.len;
     }
 
-// 没有找到指定的节点    return NULL;
+// 没有找到指定的节点
+ return NULL;
 }
 
 /* Return length of ziplist.

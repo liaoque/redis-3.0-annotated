@@ -640,7 +640,6 @@ ssize_t rdbSaveLongLongAsStringObject(rio *rdb, long long value) {
 }
 
 /* Like rdbSaveRawString() gets a Redis object instead.
-/*
  * 将给定的字符串对象 obj 保存到 rdb 中。
  *
  * 函数返回 rdb 保存字符串对象所需的字节数。

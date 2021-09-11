@@ -76,7 +76,7 @@ void hashTypeTryConversion(robj *o, robj **argv, int start, int end) {
 * 查找失败时，函数返回 -1 。
 * 查找成功时，返回 0 。
 */
-int hashTypeGetFromZiplist(robj *o, robj *field,
+int hashTypeGetFromZiplist(robj *o, sds field,
                            unsigned char **vstr,
                            unsigned int *vlen,
                            long long *vll) {
@@ -995,7 +995,8 @@ static void addHashFieldToReply(client *c, robj *o, sds field) {
         unsigned int vlen = UINT_MAX;
         long long vll = LLONG_MAX;
 
-        // 取出值        ret = hashTypeGetFromZiplist(o, field, &vstr, &vlen, &vll);
+        // 取出值
+        ret = hashTypeGetFromZiplist(o, field, &vstr, &vlen, &vll);
         if (ret < 0) {
             addReplyNull(c);
         } else {
@@ -1038,7 +1039,8 @@ void hmgetCommand(client *c) {
 
     /* Don't abort when the key cannot be found. Non-existing keys are empty
      * hashes, where HMGET should respond with a series of null bulks. */
-    // 取出哈希对象    o = lookupKeyRead(c->db, c->argv[1]);
+    // 取出哈希对象
+    o = lookupKeyRead(c->db, c->argv[1]);
 
 
     if (checkType(c, o, OBJ_HASH)) return;
@@ -1153,7 +1155,8 @@ void genericHgetallCommand(client *c, int flags) {
         addReplyArrayLen(c, length);
     }
 
-    // 迭代节点，并取出元素    hi = hashTypeInitIterator(o);
+    // 迭代节点，并取出元素
+    hi = hashTypeInitIterator(o);
     while (hashTypeNext(hi) != C_ERR) {
         // 取出键
         if (flags & OBJ_HASH_KEY) {
@@ -1167,7 +1170,8 @@ void genericHgetallCommand(client *c, int flags) {
         }
     }
 
-    // 释放迭代器    hashTypeReleaseIterator(hi);
+    // 释放迭代器
+    hashTypeReleaseIterator(hi);
 
     /* Make sure we returned the right number of elements. */
     if (flags & OBJ_HASH_KEY && flags & OBJ_HASH_VALUE) count /= 2;
