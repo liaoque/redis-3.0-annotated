@@ -116,7 +116,7 @@ void updateStatsOnUnblock(client *c, long blocked_us, long reply_us){
 /* This function is called in the beforeSleep() function of the event loop
  * in order to process the pending input buffer of clients that were
  * unblocked after a blocking operation. */
-// È¡ÏûËùÓÐÔÚ unblocked_clients Á´±íÖÐµÄ¿Í»§¶ËµÄ×èÈû×´Ì¬
+// å–æ¶ˆæ‰€æœ‰åœ¨ unblocked_clients é“¾è¡¨ä¸­çš„å®¢æˆ·ç«¯çš„é˜»å¡žçŠ¶æ€
 void processUnblockedClients(void) {
     listNode *ln;
     client *c;
@@ -172,11 +172,11 @@ void queueClientForReprocessing(client *c) {
 
 /* Unblock a client calling the right function depending on the kind
  * of operation the client is blocking for. */
-// È¡Ïû¸ø¶¨µÄ¿Í»§¶ËµÄ×èÈû×´Ì¬
+// å–æ¶ˆç»™å®šçš„å®¢æˆ·ç«¯çš„é˜»å¡žçŠ¶æ€
 void unblockClient(client *c) {
     if (c->btype == BLOCKED_LIST ||
-        c->btype == BLOCKED_ZSET ||
-        c->btype == BLOCKED_STREAM) {
+    c->btype == BLOCKED_ZSET ||
+    c->btype == BLOCKED_STREAM) {
         unblockClientWaitingData(c);
     } else if (c->btype == BLOCKED_WAIT) {
         unblockClientWaitingReplicas(c);
@@ -214,8 +214,8 @@ void unblockClient(client *c) {
  * unblockClient() will be called with the same client as argument. */
 void replyToBlockedClientTimedOut(client *c) {
     if (c->btype == BLOCKED_LIST ||
-        c->btype == BLOCKED_ZSET ||
-        c->btype == BLOCKED_STREAM) {
+    c->btype == BLOCKED_ZSET ||
+    c->btype == BLOCKED_STREAM) {
         addReplyNullArray(c);
     } else if (c->btype == BLOCKED_WAIT) {
         addReplyLongLong(c,replicationCountAcksByOffset(c->bpop.reploffset));
@@ -250,8 +250,8 @@ void disconnectAllBlockedClients(void) {
                 continue;
 
             addReplyError(c,
-                "-UNBLOCKED force unblock from blocking operation, "
-                "instance state changed (master -> replica?)");
+                          "-UNBLOCKED force unblock from blocking operation, "
+                          "instance state changed (master -> replica?)");
             unblockClient(c);
             c->flags |= CLIENT_CLOSE_AFTER_REPLY;
         }
@@ -294,8 +294,8 @@ void serveClientsBlockedOnListKey(robj *o, readyList *rl) {
                 monotime replyTimer;
                 elapsedStart(&replyTimer);
                 if (serveClientBlockedOnList(receiver,
-                    rl->key,dstkey,rl->db,value,
-                    wherefrom, whereto) == C_ERR)
+                                             rl->key,dstkey,rl->db,value,
+                                             wherefrom, whereto) == C_ERR)
                 {
                     /* If we failed serving the client we need
                      * to also undo the POP operation. */
@@ -344,8 +344,8 @@ void serveClientsBlockedOnSortedSetKey(robj *o, readyList *rl) {
             }
 
             int where = (receiver->lastcmd &&
-                         receiver->lastcmd->proc == bzpopminCommand)
-                         ? ZSET_MIN : ZSET_MAX;
+                    receiver->lastcmd->proc == bzpopminCommand)
+                            ? ZSET_MIN : ZSET_MAX;
             monotime replyTimer;
             elapsedStart(&replyTimer);
             genericZpopCommand(receiver,&rl->key,1,where,1,NULL);
@@ -356,8 +356,8 @@ void serveClientsBlockedOnSortedSetKey(robj *o, readyList *rl) {
             /* Replicate the command. */
             robj *argv[2];
             struct redisCommand *cmd = where == ZSET_MIN ?
-                                       server.zpopminCommand :
-                                       server.zpopmaxCommand;
+                    server.zpopminCommand :
+                    server.zpopmaxCommand;
             argv[0] = createStringObject(cmd->name,strlen(cmd->name));
             argv[1] = rl->key;
             incrRefCount(rl->key);
@@ -403,13 +403,13 @@ void serveClientsBlockedOnStreamKey(robj *o, readyList *rl) {
             streamCG *group = NULL;
             if (receiver->bpop.xread_group) {
                 group = streamLookupCG(s,
-                        receiver->bpop.xread_group->ptr);
+                                       receiver->bpop.xread_group->ptr);
                 /* If the group was not found, send an error
                  * to the consumer. */
                 if (!group) {
                     addReplyError(receiver,
-                        "-NOGROUP the consumer group this client "
-                        "was blocked on no longer exists");
+                                  "-NOGROUP the consumer group this client "
+                                  "was blocked on no longer exists");
                     unblockClient(receiver);
                     continue;
                 } else {
@@ -428,10 +428,10 @@ void serveClientsBlockedOnStreamKey(robj *o, readyList *rl) {
                 if (group) {
                     int created = 0;
                     consumer =
-                        streamLookupConsumer(group,
-                                             receiver->bpop.xread_consumer->ptr,
-                                             SLC_NONE,
-                                             &created);
+                            streamLookupConsumer(group,
+                                                 receiver->bpop.xread_consumer->ptr,
+                                                 SLC_NONE,
+                                                 &created);
                     noack = receiver->bpop.xread_group_noack;
                     if (created && noack) {
                         streamPropagateConsumerCreation(receiver,rl->key,
@@ -455,8 +455,8 @@ void serveClientsBlockedOnStreamKey(robj *o, readyList *rl) {
                 addReplyBulk(receiver,rl->key);
 
                 streamPropInfo pi = {
-                    rl->key,
-                    receiver->bpop.xread_group
+                        rl->key,
+                        receiver->bpop.xread_group
                 };
                 streamReplyWithRange(receiver,s,&start,NULL,
                                      receiver->bpop.xread_count,
@@ -735,7 +735,7 @@ void signalKeyAsReady(redisDb *db, robj *key, int type) {
         return;
     }
     if (!server.blocked_clients_by_type[btype] &&
-        !server.blocked_clients_by_type[BLOCKED_MODULE]) {
+    !server.blocked_clients_by_type[BLOCKED_MODULE]) {
         /* No clients block on this type. Note: Blocked modules are represented
          * by BLOCKED_MODULE, even if the intention is to wake up by normal
          * types (list, zset, stream), so we need to check that there are no
@@ -762,4 +762,3 @@ void signalKeyAsReady(redisDb *db, robj *key, int type) {
     incrRefCount(key);
     serverAssert(dictAdd(db->ready_keys,key,NULL) == DICT_OK);
 }
-

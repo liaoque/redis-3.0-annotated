@@ -36,18 +36,18 @@
 /* The function pushes an element to the specified list object 'subject',
  * at head or tail position as specified by 'where'.
  *
- * ½«¸ø¶¨ÔªËØÌí¼Óµ½ÁĞ±íµÄ±íÍ·»ò±íÎ²¡£
+ * å°†ç»™å®šå…ƒç´ æ·»åŠ åˆ°åˆ—è¡¨çš„è¡¨å¤´æˆ–è¡¨å°¾ã€‚
  *
- * ²ÎÊı where ¾ö¶¨ÁËĞÂÔªËØÌí¼ÓµÄÎ»ÖÃ£º
+ * å‚æ•° where å†³å®šäº†æ–°å…ƒç´ æ·»åŠ çš„ä½ç½®ï¼š
  *
- *  - REDIS_HEAD ½«ĞÂÔªËØÌí¼Óµ½±íÍ·
+ *  - REDIS_HEAD å°†æ–°å…ƒç´ æ·»åŠ åˆ°è¡¨å¤´
  *
- *  - REDIS_TAIL ½«ĞÂÔªËØÌí¼Óµ½±íÎ²
+ *  - REDIS_TAIL å°†æ–°å…ƒç´ æ·»åŠ åˆ°è¡¨å°¾
  *
  * There is no need for the caller to increment the refcount of 'value' as
- * the function takes care of it if needed. 
+ * the function takes care of it if needed.
  *
- * µ÷ÓÃÕßÎŞĞëµ£ĞÄ value µÄÒıÓÃ¼ÆÊı£¬ÒòÎªÕâ¸öº¯Êı»á¸ºÔğÕâ·½ÃæµÄ¹¤×÷¡£
+ * è°ƒç”¨è€…æ— é¡»æ‹…å¿ƒ value çš„å¼•ç”¨è®¡æ•°ï¼Œå› ä¸ºè¿™ä¸ªå‡½æ•°ä¼šè´Ÿè´£è¿™æ–¹é¢çš„å·¥ä½œã€‚
  */
 void listTypePush(robj *subject, robj *value, int where) {
     if (subject->encoding == OBJ_ENCODING_QUICKLIST) {
@@ -69,13 +69,13 @@ void *listPopSaver(unsigned char *data, unsigned int sz) {
 }
 
 /*
- * ´ÓÁĞ±íµÄ±íÍ·»ò±íÎ²ÖĞµ¯³öÒ»¸öÔªËØ¡£
+ * ä»åˆ—è¡¨çš„è¡¨å¤´æˆ–è¡¨å°¾ä¸­å¼¹å‡ºä¸€ä¸ªå…ƒç´ ã€‚
  *
- * ²ÎÊı where ¾ö¶¨ÁËµ¯³öÔªËØµÄÎ»ÖÃ£º 
+ * å‚æ•° where å†³å®šäº†å¼¹å‡ºå…ƒç´ çš„ä½ç½®ï¼š
  *
- *  - REDIS_HEAD ´Ó±íÍ·µ¯³ö
+ *  - REDIS_HEAD ä»è¡¨å¤´å¼¹å‡º
  *
- *  - REDIS_TAIL ´Ó±íÎ²µ¯³ö
+ *  - REDIS_TAIL ä»è¡¨å°¾å¼¹å‡º
  */
 robj *listTypePop(robj *subject, int where) {
     long long vlong;
@@ -96,7 +96,7 @@ robj *listTypePop(robj *subject, int where) {
 
 
 /*
- * ·µ»ØÁĞ±íµÄ½ÚµãÊıÁ¿
+ * è¿”å›åˆ—è¡¨çš„èŠ‚ç‚¹æ•°é‡
  */
 unsigned long listTypeLength(const robj *subject) {
     if (subject->encoding == OBJ_ENCODING_QUICKLIST) {
@@ -108,13 +108,13 @@ unsigned long listTypeLength(const robj *subject) {
 
 /* Initialize an iterator at the specified index.
  *
- * ´´½¨²¢·µ»ØÒ»¸öÁĞ±íµü´úÆ÷¡£
+ * åˆ›å»ºå¹¶è¿”å›ä¸€ä¸ªåˆ—è¡¨è¿­ä»£å™¨ã€‚
  *
- * ²ÎÊı index ¾ö¶¨¿ªÊ¼µü´úµÄÁĞ±íË÷Òı¡£
+ * å‚æ•° index å†³å®šå¼€å§‹è¿­ä»£çš„åˆ—è¡¨ç´¢å¼•ã€‚
  *
- * ²ÎÊı direction Ôò¾ö¶¨ÁËµü´úµÄ·½Ïò¡£
+ * å‚æ•° direction åˆ™å†³å®šäº†è¿­ä»£çš„æ–¹å‘ã€‚
  *
- * listTypeIterator ÓÚ redis.h ÎÄ¼şÖĞ¶¨Òå¡£
+ * listTypeIterator äº redis.h æ–‡ä»¶ä¸­å®šä¹‰ã€‚
  */
 listTypeIterator *listTypeInitIterator(robj *subject, long index,
                                        unsigned char direction) {
@@ -126,7 +126,7 @@ listTypeIterator *listTypeInitIterator(robj *subject, long index,
     /* LIST_HEAD means start at TAIL and move *towards* head.
      * LIST_TAIL means start at HEAD and move *towards tail. */
     int iter_direction =
-        direction == LIST_HEAD ? AL_START_TAIL : AL_START_HEAD;
+            direction == LIST_HEAD ? AL_START_TAIL : AL_START_HEAD;
     if (li->encoding == OBJ_ENCODING_QUICKLIST) {
         li->iter = quicklistGetIteratorAtIdx(li->subject->ptr,
                                              iter_direction, index);
@@ -136,9 +136,9 @@ listTypeIterator *listTypeInitIterator(robj *subject, long index,
     return li;
 }
 
-/* Clean up the iterator. 
+/* Clean up the iterator.
  *
- * ÊÍ·Åµü´úÆ÷
+ * é‡Šæ”¾è¿­ä»£å™¨
  */
 void listTypeReleaseIterator(listTypeIterator *li) {
     zfree(li->iter);
@@ -147,11 +147,11 @@ void listTypeReleaseIterator(listTypeIterator *li) {
 
 /* Stores pointer to current the entry in the provided entry structure
  * and advances the position of the iterator. Returns 1 when the current
- * entry is in fact an entry, 0 otherwise. 
+ * entry is in fact an entry, 0 otherwise.
  *
- * Ê¹ÓÃ entry ½á¹¹¼ÇÂ¼µü´úÆ÷µ±Ç°Ö¸ÏòµÄ½Úµã£¬²¢½«µü´úÆ÷µÄÖ¸ÕëÒÆ¶¯µ½ÏÂÒ»¸öÔªËØ¡£
+ * ä½¿ç”¨ entry ç»“æ„è®°å½•è¿­ä»£å™¨å½“å‰æŒ‡å‘çš„èŠ‚ç‚¹ï¼Œå¹¶å°†è¿­ä»£å™¨çš„æŒ‡é’ˆç§»åŠ¨åˆ°ä¸‹ä¸€ä¸ªå…ƒç´ ã€‚
  *
- * Èç¹ûÁĞ±íÖĞ»¹ÓĞÔªËØ¿Éµü´ú£¬ÄÇÃ´·µ»Ø 1 £¬·ñÔò£¬·µ»Ø 0 ¡£
+ * å¦‚æœåˆ—è¡¨ä¸­è¿˜æœ‰å…ƒç´ å¯è¿­ä»£ï¼Œé‚£ä¹ˆè¿”å› 1 ï¼Œå¦åˆ™ï¼Œè¿”å› 0 ã€‚
  */
 int listTypeNext(listTypeIterator *li, listTypeEntry *entry) {
     /* Protect from converting when iterating */
@@ -163,19 +163,19 @@ int listTypeNext(listTypeIterator *li, listTypeEntry *entry) {
     } else {
         serverPanic("Unknown list encoding");
     }
-    // ÁĞ±íÔªËØÒÑ¾­È«²¿µü´úÍê
+    // åˆ—è¡¨å…ƒç´ å·²ç»å…¨éƒ¨è¿­ä»£å®Œ
     return 0;
 }
 
-/* Return entry or NULL at the current position of the iterator. 
+/* Return entry or NULL at the current position of the iterator.
  *
- * ·µ»Ø entry ½á¹¹µ±Ç°Ëù±£´æµÄÁĞ±í½Úµã¡£
+ * è¿”å› entry ç»“æ„å½“å‰æ‰€ä¿å­˜çš„åˆ—è¡¨èŠ‚ç‚¹ã€‚
  *
- * Èç¹û entry Ã»ÓĞ¼ÇÂ¼ÈÎºÎ½Úµã£¬ÄÇÃ´·µ»Ø NULL ¡£
+ * å¦‚æœ entry æ²¡æœ‰è®°å½•ä»»ä½•èŠ‚ç‚¹ï¼Œé‚£ä¹ˆè¿”å› NULL ã€‚
  */
 robj *listTypeGet(listTypeEntry *entry) {
     robj *value = NULL;
-    // ¸ù¾İË÷Òı£¬´Ó ZIPLIST ÖĞÈ¡³ö½ÚµãµÄÖµ
+    // æ ¹æ®ç´¢å¼•ï¼Œä» ZIPLIST ä¸­å–å‡ºèŠ‚ç‚¹çš„å€¼
     if (entry->li->encoding == OBJ_ENCODING_QUICKLIST) {
         if (entry->entry.value) {
             value = createStringObject((char *)entry->entry.value,
@@ -190,19 +190,19 @@ robj *listTypeGet(listTypeEntry *entry) {
 }
 
 /*
- * ½«¶ÔÏó value ²åÈëµ½ÁĞ±í½ÚµãµÄÖ®Ç°»òÖ®ºó¡£
+ * å°†å¯¹è±¡ value æ’å…¥åˆ°åˆ—è¡¨èŠ‚ç‚¹çš„ä¹‹å‰æˆ–ä¹‹åã€‚
  *
- * where ²ÎÊı¾ö¶¨ÁË²åÈëµÄÎ»ÖÃ£º
+ * where å‚æ•°å†³å®šäº†æ’å…¥çš„ä½ç½®ï¼š
  *
- *  - REDIS_HEAD ²åÈëµ½½ÚµãÖ®Ç°
+ *  - REDIS_HEAD æ’å…¥åˆ°èŠ‚ç‚¹ä¹‹å‰
  *
- *  - REDIS_TAIL ²åÈëµ½½ÚµãÖ®ºó
+ *  - REDIS_TAIL æ’å…¥åˆ°èŠ‚ç‚¹ä¹‹å
  */
 void listTypeInsert(listTypeEntry *entry, robj *value, int where) {
 
-    // ²åÈëµ½ ZIPLIST
+    // æ’å…¥åˆ° ZIPLIST
     if (entry->li->encoding == OBJ_ENCODING_QUICKLIST) {
-        // ·µ»Ø¶ÔÏóÎ´±àÂëµÄÖµ
+        // è¿”å›å¯¹è±¡æœªç¼–ç çš„å€¼
         value = getDecodedObject(value);
         sds str = value->ptr;
         size_t len = sdslen(str);
@@ -219,11 +219,11 @@ void listTypeInsert(listTypeEntry *entry, robj *value, int where) {
     }
 }
 
-/* Compare the given object with the entry at the current position. 
+/* Compare the given object with the entry at the current position.
  *
- * ½«µ±Ç°½ÚµãµÄÖµºÍ¶ÔÏó o ½øĞĞ¶Ô±È
+ * å°†å½“å‰èŠ‚ç‚¹çš„å€¼å’Œå¯¹è±¡ o è¿›è¡Œå¯¹æ¯”
  *
- * º¯ÊıÔÚÁ½ÖµÏàµÈÊ±·µ»Ø 1 £¬²»ÏàµÈÊ±·µ»Ø 0 ¡£
+ * å‡½æ•°åœ¨ä¸¤å€¼ç›¸ç­‰æ—¶è¿”å› 1 ï¼Œä¸ç›¸ç­‰æ—¶è¿”å› 0 ã€‚
  */
 int listTypeEqual(listTypeEntry *entry, robj *o) {
     if (entry->li->encoding == OBJ_ENCODING_QUICKLIST) {
@@ -234,9 +234,9 @@ int listTypeEqual(listTypeEntry *entry, robj *o) {
     }
 }
 
-/* Delete the element pointed to. 
+/* Delete the element pointed to.
  *
- * É¾³ı entry ËùÖ¸ÏòµÄ½Úµã
+ * åˆ é™¤ entry æ‰€æŒ‡å‘çš„èŠ‚ç‚¹
  */
 void listTypeDelete(listTypeIterator *iter, listTypeEntry *entry) {
     if (entry->li->encoding == OBJ_ENCODING_QUICKLIST) {
@@ -247,7 +247,7 @@ void listTypeDelete(listTypeIterator *iter, listTypeEntry *entry) {
 }
 
 /*
- * ½«ÁĞ±íµÄµ×²ã±àÂë´Ó ziplist ×ª»»³ÉË«¶ËÁ´±í
+ * å°†åˆ—è¡¨çš„åº•å±‚ç¼–ç ä» ziplist è½¬æ¢æˆåŒç«¯é“¾è¡¨
  */
 
 void listTypeConvert(robj *subject, int enc) {
@@ -279,9 +279,9 @@ robj *listTypeDup(robj *o) {
             lobj = createObject(OBJ_LIST, quicklistDup(o->ptr));
             lobj->encoding = OBJ_ENCODING_QUICKLIST;
             break;
-        default:
-            serverPanic("Unknown list encoding");
-            break;
+            default:
+                serverPanic("Unknown list encoding");
+                break;
     }
     return lobj;
 }
@@ -290,12 +290,12 @@ robj *listTypeDup(robj *o) {
  * List Commands
  *----------------------------------------------------------------------------*/
 
-/* Implements LPUSH/RPUSH/LPUSHX/RPUSHX. 
+/* Implements LPUSH/RPUSH/LPUSHX/RPUSHX.
  * 'xx': push if key exists. */
 void pushGenericCommand(client *c, int where, int xx) {
     int j;
 
-    // È¡³öÁĞ±í¶ÔÏó
+    // å–å‡ºåˆ—è¡¨å¯¹è±¡
     robj *lobj = lookupKeyWrite(c->db, c->argv[1]);
     if (checkType(c,lobj,OBJ_LIST)) return;
     if (!lobj) {
@@ -310,14 +310,14 @@ void pushGenericCommand(client *c, int where, int xx) {
         dbAdd(c->db,c->argv[1],lobj);
     }
 
-    // ±éÀúËùÓĞÊäÈëÖµ£¬²¢½«ËüÃÇÌí¼Óµ½ÁĞ±íÖĞ
+    // éå†æ‰€æœ‰è¾“å…¥å€¼ï¼Œå¹¶å°†å®ƒä»¬æ·»åŠ åˆ°åˆ—è¡¨ä¸­
     for (j = 2; j < c->argc; j++) {
-        // ½«ÖµÍÆÈëµ½ÁĞ±í
+        // å°†å€¼æ¨å…¥åˆ°åˆ—è¡¨
         listTypePush(lobj,c->argv[j],where);
         server.dirty++;
     }
 
-    // ·µ»ØÌí¼ÓµÄ½ÚµãÊıÁ¿
+    // è¿”å›æ·»åŠ çš„èŠ‚ç‚¹æ•°é‡
     addReplyLongLong(c, listTypeLength(lobj));
 
     char *event = (where == LIST_HEAD) ? "lpush" : "rpush";
@@ -363,7 +363,7 @@ void linsertCommand(client *c) {
     }
 
     if ((subject = lookupKeyWriteOrReply(c,c->argv[1],shared.czero)) == NULL ||
-        checkType(c,subject,OBJ_LIST)) return;
+    checkType(c,subject,OBJ_LIST)) return;
 
     /* Seek pivot from head to tail */
     iter = listTypeInitIterator(subject,0,LIST_TAIL);
@@ -424,17 +424,17 @@ void lindexCommand(client *c) {
 
 /* LSET <key> <index> <element> */
 void lsetCommand(client *c) {
-    // È¡³öÁĞ±í¶ÔÏó
+    // å–å‡ºåˆ—è¡¨å¯¹è±¡
     robj *o = lookupKeyWriteOrReply(c,c->argv[1],shared.nokeyerr);
     if (o == NULL || checkType(c,o,OBJ_LIST)) return;
     long index;
-    // È¡³öÖµ¶ÔÏó value
+    // å–å‡ºå€¼å¯¹è±¡ value
     robj *value = c->argv[3];
-   // È¡³öÕûÊıÖµ¶ÔÏó index
+    // å–å‡ºæ•´æ•°å€¼å¯¹è±¡ index
     if ((getLongFromObjectOrReply(c, c->argv[2], &index, NULL) != C_OK))
         return;
 
-    // ÉèÖÃµ½ ziplist
+    // è®¾ç½®åˆ° ziplist
     if (o->encoding == OBJ_ENCODING_QUICKLIST) {
         quicklist *ql = o->ptr;
         int replaced = quicklistReplaceAtIndex(ql, index,
@@ -481,7 +481,7 @@ void addListRangeReply(client *c, robj *o, long start, long end, int reverse) {
         int direction = reverse ? LIST_HEAD : LIST_TAIL;
         listTypeIterator *iter = listTypeInitIterator(o,from,direction);
 
-        // ±éÀú ziplist £¬²¢½«Ö¸¶¨Ë÷ÒıÉÏµÄÖµÌí¼Óµ½»Ø¸´ÖĞ
+        // éå† ziplist ï¼Œå¹¶å°†æŒ‡å®šç´¢å¼•ä¸Šçš„å€¼æ·»åŠ åˆ°å›å¤ä¸­
         while(rangelen--) {
             listTypeEntry entry;
             listTypeNext(iter, &entry);
@@ -525,7 +525,7 @@ void popGenericCommand(client *c, int where) {
         return;
     } else if (c->argc == 3) {
         /* Parse the optional count argument. */
-        if (getPositiveLongFromObjectOrReply(c,c->argv[2],&count,NULL) != C_OK) 
+        if (getPositiveLongFromObjectOrReply(c,c->argv[2],&count,NULL) != C_OK)
             return;
         if (count == 0) {
             /* Fast exit path. */
@@ -577,10 +577,10 @@ void lrangeCommand(client *c) {
     long start, end;
 
     if ((getLongFromObjectOrReply(c, c->argv[2], &start, NULL) != C_OK) ||
-        (getLongFromObjectOrReply(c, c->argv[3], &end, NULL) != C_OK)) return;
+    (getLongFromObjectOrReply(c, c->argv[3], &end, NULL) != C_OK)) return;
 
     if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.emptyarray)) == NULL
-         || checkType(c,o,OBJ_LIST)) return;
+    || checkType(c,o,OBJ_LIST)) return;
 
     addListRangeReply(c,o,start,end,0);
 }
@@ -591,15 +591,15 @@ void ltrimCommand(client *c) {
     long start, end, llen, ltrim, rtrim;
 
     if ((getLongFromObjectOrReply(c, c->argv[2], &start, NULL) != C_OK) ||
-        (getLongFromObjectOrReply(c, c->argv[3], &end, NULL) != C_OK)) return;
+    (getLongFromObjectOrReply(c, c->argv[3], &end, NULL) != C_OK)) return;
 
     if ((o = lookupKeyWriteOrReply(c,c->argv[1],shared.ok)) == NULL ||
-        checkType(c,o,OBJ_LIST)) return;
-    // ÁĞ±í³¤¶È
+    checkType(c,o,OBJ_LIST)) return;
+    // åˆ—è¡¨é•¿åº¦
     llen = listTypeLength(o);
 
     /* convert negative indexes */
-    // ½«¸ºÊıË÷Òı×ª»»³ÉÕıÊıË÷Òı
+    // å°†è´Ÿæ•°ç´¢å¼•è½¬æ¢æˆæ­£æ•°ç´¢å¼•
     if (start < 0) start = llen+start;
     if (end < 0) end = llen+end;
     if (start < 0) start = 0;
@@ -674,12 +674,12 @@ void lposCommand(client *c) {
         } else if (!strcasecmp(opt,"COUNT") && moreargs) {
             j++;
             if (getPositiveLongFromObjectOrReply(c, c->argv[j], &count,
-              "COUNT can't be negative") != C_OK)
+                                                 "COUNT can't be negative") != C_OK)
                 return;
         } else if (!strcasecmp(opt,"MAXLEN") && moreargs) {
             j++;
-            if (getPositiveLongFromObjectOrReply(c, c->argv[j], &maxlen, 
-              "MAXLEN can't be negative") != C_OK)
+            if (getPositiveLongFromObjectOrReply(c, c->argv[j], &maxlen,
+                                                 "MAXLEN can't be negative") != C_OK)
                 return;
         } else {
             addReplyErrorObject(c,shared.syntaxerr);
@@ -713,7 +713,7 @@ void lposCommand(client *c) {
     li = listTypeInitIterator(o,direction == LIST_HEAD ? -1 : 0,direction);
     listTypeEntry entry;
 
-    // Èç¹ûÁĞ±íÒÑ¾­Îª¿Õ£¬ÄÇÃ´É¾³ıËü
+    // å¦‚æœåˆ—è¡¨å·²ç»ä¸ºç©ºï¼Œé‚£ä¹ˆåˆ é™¤å®ƒ
     long llen = listTypeLength(o);
     long index = 0, matches = 0, matchindex = -1, arraylen = 0;
     while (listTypeNext(li,&entry) && (maxlen == 0 || index < maxlen)) {
@@ -750,21 +750,21 @@ void lposCommand(client *c) {
 /* LREM <key> <count> <element> */
 void lremCommand(client *c) {
     robj *subject, *obj;
-    // ±àÂëÄ¿±ê¶ÔÏó elem
+    // ç¼–ç ç›®æ ‡å¯¹è±¡ elem
     obj = c->argv[3];
     long toremove;
     long removed = 0;
 
-    // È¡³öÖ¸¶¨É¾³ıÄ£Ê½µÄ count ²ÎÊı
+    // å–å‡ºæŒ‡å®šåˆ é™¤æ¨¡å¼çš„ count å‚æ•°
     if ((getLongFromObjectOrReply(c, c->argv[2], &toremove, NULL) != C_OK))
         return;
 
-   // È¡³öÁĞ±í¶ÔÏó
+    // å–å‡ºåˆ—è¡¨å¯¹è±¡
     subject = lookupKeyWriteOrReply(c,c->argv[1],shared.czero);
     if (subject == NULL || checkType(c,subject,OBJ_LIST)) return;
 
     listTypeIterator *li;
-    // ¸ù¾İ toremove ²ÎÊı£¬¾ö¶¨ÊÇ´Ó±íÍ·»¹ÊÇ±íÎ²¿ªÊ¼½øĞĞÉ¾³ı
+    // æ ¹æ® toremove å‚æ•°ï¼Œå†³å®šæ˜¯ä»è¡¨å¤´è¿˜æ˜¯è¡¨å°¾å¼€å§‹è¿›è¡Œåˆ é™¤
     if (toremove < 0) {
         toremove = -toremove;
         li = listTypeInitIterator(subject,-1,LIST_HEAD);
@@ -773,13 +773,13 @@ void lremCommand(client *c) {
     }
 
     listTypeEntry entry;
- // ²éÕÒ£¬±È¶Ô¶ÔÏó£¬²¢½øĞĞÉ¾³ı
+    // æŸ¥æ‰¾ï¼Œæ¯”å¯¹å¯¹è±¡ï¼Œå¹¶è¿›è¡Œåˆ é™¤
     while (listTypeNext(li,&entry)) {
         if (listTypeEqual(&entry,obj)) {
             listTypeDelete(li, &entry);
             server.dirty++;
             removed++;
-            // ÒÑ¾­Âú×ãÉ¾³ıÊıÁ¿£¬Í£Ö¹
+            // å·²ç»æ»¡è¶³åˆ é™¤æ•°é‡ï¼Œåœæ­¢
             if (toremove && removed == toremove) break;
         }
     }
@@ -790,7 +790,7 @@ void lremCommand(client *c) {
         notifyKeyspaceEvent(NOTIFY_LIST,"lrem",c->argv[1],c->db->id);
     }
 
-    // É¾³ı¿ÕÁĞ±í
+    // åˆ é™¤ç©ºåˆ—è¡¨
     if (listTypeLength(subject) == 0) {
         dbDelete(c->db,c->argv[1]);
         notifyKeyspaceEvent(NOTIFY_GENERIC,"del",c->argv[1],c->db->id);
@@ -802,7 +802,7 @@ void lremCommand(client *c) {
 void lmoveHandlePush(client *c, robj *dstkey, robj *dstobj, robj *value,
                      int where) {
     /* Create the list if the key does not exist */
-    // Èç¹ûÄ¿±êÁĞ±í²»´æÔÚ£¬ÄÇÃ´´´½¨Ò»¸ö
+    // å¦‚æœç›®æ ‡åˆ—è¡¨ä¸å­˜åœ¨ï¼Œé‚£ä¹ˆåˆ›å»ºä¸€ä¸ª
     if (!dstobj) {
         dstobj = createQuicklistObject();
         quicklistSetOptions(dstobj->ptr, server.list_max_ziplist_size,
@@ -811,7 +811,7 @@ void lmoveHandlePush(client *c, robj *dstkey, robj *dstobj, robj *value,
     }
     signalModifiedKey(c,c->db,dstkey);
 
-    // ½«ÖµÍÆÈëÄ¿±êÁĞ±íÖĞ
+    // å°†å€¼æ¨å…¥ç›®æ ‡åˆ—è¡¨ä¸­
     listTypePush(dstobj,value,where);
     notifyKeyspaceEvent(NOTIFY_LIST,
                         where == LIST_HEAD ? "lpush" : "rpush",
@@ -844,24 +844,24 @@ robj *getStringObjectFromListPosition(int position) {
 
 void lmoveGenericCommand(client *c, int wherefrom, int whereto) {
     robj *sobj, *value;
-    // À´Ô´ÁĞ±í
+    // æ¥æºåˆ—è¡¨
     if ((sobj = lookupKeyWriteOrReply(c,c->argv[1],shared.null[c->resp]))
-        == NULL || checkType(c,sobj,OBJ_LIST)) return;
+    == NULL || checkType(c,sobj,OBJ_LIST)) return;
 
-    // ¿ÕÁĞ±í£¬Ã»ÓĞÔªËØ¿É pop £¬Ö±½Ó·µ»Ø
+    // ç©ºåˆ—è¡¨ï¼Œæ²¡æœ‰å…ƒç´ å¯ pop ï¼Œç›´æ¥è¿”å›
     if (listTypeLength(sobj) == 0) {
         /* This may only happen after loading very old RDB files. Recent
          * versions of Redis delete keys of empty lists. */
         addReplyNull(c);
-    // Ô´ÁĞ±í·Ç¿Õ
+        // æºåˆ—è¡¨éç©º
     } else {
-        // Ä¿±ê¶ÔÏó
+        // ç›®æ ‡å¯¹è±¡
         robj *dobj = lookupKeyWrite(c->db,c->argv[2]);
         robj *touchedkey = c->argv[1];
 
-        // ¼ì²éÄ¿±ê¶ÔÏóÊÇ·ñÁĞ±í
+        // æ£€æŸ¥ç›®æ ‡å¯¹è±¡æ˜¯å¦åˆ—è¡¨
         if (checkType(c,dobj,OBJ_LIST)) return;
-        // ´ÓÔ´ÁĞ±íÖĞµ¯³öÖµ
+        // ä»æºåˆ—è¡¨ä¸­å¼¹å‡ºå€¼
         value = listTypePop(sobj,wherefrom);
         serverAssert(value); /* assertion for valgrind (avoid NPD) */
         lmoveHandlePush(c,c->argv[2],dobj,value,whereto);
@@ -874,7 +874,7 @@ void lmoveGenericCommand(client *c, int wherefrom, int whereto) {
                             wherefrom == LIST_HEAD ? "lpop" : "rpop",
                             touchedkey,
                             c->db->id);
-        // Èç¹ûÔ´ÁĞ±íÒÑ¾­Îª¿Õ£¬ÄÇÃ´½«ËüÉ¾³ı
+        // å¦‚æœæºåˆ—è¡¨å·²ç»ä¸ºç©ºï¼Œé‚£ä¹ˆå°†å®ƒåˆ é™¤
         if (listTypeLength(sobj) == 0) {
             dbDelete(c->db,touchedkey);
             notifyKeyspaceEvent(NOTIFY_GENERIC,"del",
@@ -896,9 +896,9 @@ void lmoveGenericCommand(client *c, int wherefrom, int whereto) {
 void lmoveCommand(client *c) {
     int wherefrom, whereto;
     if (getListPositionFromObjectOrReply(c,c->argv[3],&wherefrom)
-        != C_OK) return;
+    != C_OK) return;
     if (getListPositionFromObjectOrReply(c,c->argv[4],&whereto)
-        != C_OK) return;
+    != C_OK) return;
     lmoveGenericCommand(c, wherefrom, whereto);
 }
 
@@ -928,27 +928,26 @@ void rpoplpushCommand(client *c) {
 /* This is a helper function for handleClientsBlockedOnKeys(). Its work
  * is to serve a specific client (receiver) that is blocked on 'key'
  * in the context of the specified 'db', doing the following:
- * 
- * º¯Êı¶Ô±»×èÈûµÄ¿Í»§¶Ë receiver ¡¢Ôì³É×èÈûµÄ key ¡¢ key ËùÔÚµÄÊı¾İ¿â db
- * ÒÔ¼°Ò»¸öÖµ value ºÍÒ»¸öÎ»ÖÃÖµ where Ö´ĞĞÒÔÏÂ¶¯×÷£º
+ *
+ * å‡½æ•°å¯¹è¢«é˜»å¡çš„å®¢æˆ·ç«¯ receiver ã€é€ æˆé˜»å¡çš„ key ã€ key æ‰€åœ¨çš„æ•°æ®åº“ db
+ * ä»¥åŠä¸€ä¸ªå€¼ value å’Œä¸€ä¸ªä½ç½®å€¼ where æ‰§è¡Œä»¥ä¸‹åŠ¨ä½œï¼š
  *
  * 1) Provide the client with the 'value' element.
- *    ½« value Ìá¹©¸ø receiver
+ *    å°† value æä¾›ç»™ receiver
  * 2) If the dstkey is not NULL (we are serving a BLMOVE) also push the
  *    'value' element on the destination list (the "push" side of the command).
- *    Èç¹û dstkey ²»Îª¿Õ£¨BRPOPLPUSHµÄÇé¿ö£©£¬
- *    ÄÇÃ´Ò²½« value ÍÆÈëµ½ dstkey Ö¸¶¨µÄÁĞ±íÖĞ¡£
+ *    å¦‚æœ dstkey ä¸ä¸ºç©ºï¼ˆBRPOPLPUSHçš„æƒ…å†µï¼‰ï¼Œ
+ *    é‚£ä¹ˆä¹Ÿå°† value æ¨å…¥åˆ° dstkey æŒ‡å®šçš„åˆ—è¡¨ä¸­ã€‚
  *
  * 3) Propagate the resulting BRPOP, BLPOP and additional xPUSH if any into
  *    the AOF and replication channel.
  *
- *    ½« BRPOP ¡¢ BLPOP ºÍ¿ÉÄÜÓĞµÄ LPUSH ´«²¥µ½ AOF ºÍÍ¬²½½Úµã
+ *    å°† BRPOP ã€ BLPOP å’Œå¯èƒ½æœ‰çš„ LPUSH ä¼ æ’­åˆ° AOF å’ŒåŒæ­¥èŠ‚ç‚¹
  * The argument 'wherefrom' is LIST_TAIL or LIST_HEAD, and indicates if the
  * 'value' element was popped from the head (BLPOP) or tail (BRPOP) so that
  * we can propagate the command properly.
- * where ¿ÉÄÜÊÇ REDIS_TAIL »òÕß REDIS_HEAD £¬ÓÃÓÚÊ¶±ğ¸Ã value ÊÇ´ÓÄÇ¸öµØ·½ POP
- * ³öÀ´£¬ÒÀ¿¿Õâ¸ö²ÎÊı£¬¿ÉÒÔÍ¬Ñù´«²¥ BLPOP »òÕß BRPOP ¡£
-
+ * where å¯èƒ½æ˜¯ REDIS_TAIL æˆ–è€… REDIS_HEAD ï¼Œç”¨äºè¯†åˆ«è¯¥ value æ˜¯ä»é‚£ä¸ªåœ°æ–¹ POP
+ * å‡ºæ¥ï¼Œä¾é è¿™ä¸ªå‚æ•°ï¼Œå¯ä»¥åŒæ ·ä¼ æ’­ BLPOP æˆ–è€… BRPOP ã€‚
  * The argument 'whereto' is LIST_TAIL or LIST_HEAD, and indicates if the
  * 'value' element is to be pushed to the head or tail so that we can
  * propagate the command properly.
@@ -957,12 +956,12 @@ void rpoplpushCommand(client *c) {
  * C_ERR is returned to signal the caller that the list POP operation
  * should be undone as the client was not served: This only happens for
  * BLMOVE that fails to push the value to the destination key as it is
- * of the wrong type. 
+ * of the wrong type.
  *
- * Èç¹ûÒ»ÇĞ³É¹¦£¬·µ»Ø REDIS_OK ¡£
- * Èç¹ûÖ´ĞĞÊ§°Ü£¬ÄÇÃ´·µ»Ø REDIS_ERR £¬ÈÃ Redis ³·Ïú¶ÔÄ¿±ê½ÚµãµÄ POP ²Ù×÷¡£
- * Ê§°ÜµÄÇé¿öÖ»»á³öÏÖÔÚ BLMOVE ÃüÁîÖĞ£¬
- * ±ÈÈç POP Ô´ÁĞ±í³É¹¦£¬È´·¢ÏÖ PUSH µÄÄ¿±ê¶ÔÏó²»ÊÇÁĞ±íÊ±£¬²Ù×÷¾Í»á³öÏÖÊ§°Ü¡£
+ * å¦‚æœä¸€åˆ‡æˆåŠŸï¼Œè¿”å› REDIS_OK ã€‚
+ * å¦‚æœæ‰§è¡Œå¤±è´¥ï¼Œé‚£ä¹ˆè¿”å› REDIS_ERR ï¼Œè®© Redis æ’¤é”€å¯¹ç›®æ ‡èŠ‚ç‚¹çš„ POP æ“ä½œã€‚
+ * å¤±è´¥çš„æƒ…å†µåªä¼šå‡ºç°åœ¨ BLMOVE å‘½ä»¤ä¸­ï¼Œ
+ * æ¯”å¦‚ POP æºåˆ—è¡¨æˆåŠŸï¼Œå´å‘ç° PUSH çš„ç›®æ ‡å¯¹è±¡ä¸æ˜¯åˆ—è¡¨æ—¶ï¼Œæ“ä½œå°±ä¼šå‡ºç°å¤±è´¥ã€‚
  */
 int serveClientBlockedOnList(client *receiver, robj *key, robj *dstkey, redisDb *db, robj *value, int wherefrom, int whereto)
 {
@@ -971,11 +970,11 @@ int serveClientBlockedOnList(client *receiver, robj *key, robj *dstkey, redisDb 
     if (dstkey == NULL) {
         /* Propagate the [LR]POP operation. */
         argv[0] = (wherefrom == LIST_HEAD) ? shared.lpop :
-                                             shared.rpop;
+                shared.rpop;
         argv[1] = key;
         propagate((wherefrom == LIST_HEAD) ?
-            server.lpopCommand : server.rpopCommand,
-            db->id,argv,2,PROPAGATE_AOF|PROPAGATE_REPL);
+        server.lpopCommand : server.rpopCommand,
+        db->id,argv,2,PROPAGATE_AOF|PROPAGATE_REPL);
 
         /* BRPOP/BLPOP */
         addReplyArrayLen(receiver,2);
@@ -988,17 +987,17 @@ int serveClientBlockedOnList(client *receiver, robj *key, robj *dstkey, redisDb 
 
 
 
-    // Ö´ĞĞµÄÊÇ BLMOVE 
+        // æ‰§è¡Œçš„æ˜¯ BLMOVE
     } else {
         /* BLMOVE */
         robj *dstobj =
-            lookupKeyWrite(receiver->db,dstkey);
+                lookupKeyWrite(receiver->db,dstkey);
         if (!(dstobj &&
-             checkType(receiver,dstobj,OBJ_LIST)))
+        checkType(receiver,dstobj,OBJ_LIST)))
         {
             lmoveHandlePush(receiver,dstkey,dstobj,value,whereto);
             /* Propagate the LMOVE/RPOPLPUSH operation. */
-            // ´«²¥ RPOP ÃüÁî
+            // ä¼ æ’­ RPOP å‘½ä»¤
             int isbrpoplpush = (receiver->lastcmd->proc == brpoplpushCommand);
             argv[0] = isbrpoplpush ? shared.rpoplpush : shared.lmove;
             argv[1] = key;
@@ -1006,12 +1005,12 @@ int serveClientBlockedOnList(client *receiver, robj *key, robj *dstkey, redisDb 
             argv[3] = getStringObjectFromListPosition(wherefrom);
             argv[4] = getStringObjectFromListPosition(whereto);
             propagate(isbrpoplpush ? server.rpoplpushCommand : server.lmoveCommand,
-                db->id,argv,(isbrpoplpush ? 3 : 5),
-                PROPAGATE_AOF|
-                PROPAGATE_REPL);
+                      db->id,argv,(isbrpoplpush ? 3 : 5),
+                      PROPAGATE_AOF|
+                      PROPAGATE_REPL);
 
             /* Notify event ("lpush" or "rpush" was notified by lmoveHandlePush). */
-            // ´«²¥ LPUSH ÃüÁî
+            // ä¼ æ’­ LPUSH å‘½ä»¤
             notifyKeyspaceEvent(NOTIFY_LIST,wherefrom == LIST_TAIL ? "rpop" : "lpop",
                                 key,receiver->db->id);
         } else {
@@ -1029,40 +1028,40 @@ void blockingPopGenericCommand(client *c, int where) {
     mstime_t timeout;
     int j;
 
-    // È¡³ö timeout ²ÎÊı
+    // å–å‡º timeout å‚æ•°
     if (getTimeoutFromObjectOrReply(c,c->argv[c->argc-1],&timeout,UNIT_SECONDS)
-        != C_OK) return;
+    != C_OK) return;
 
-    // ±éÀúËùÓĞÁĞ±í¼ü
+    // éå†æ‰€æœ‰åˆ—è¡¨é”®
     for (j = 1; j < c->argc-1; j++) {
-        // È¡³öÁĞ±í¼ü
+        // å–å‡ºåˆ—è¡¨é”®
         o = lookupKeyWrite(c->db,c->argv[j]);
-        // ÓĞ·Ç¿ÕÁĞ±í£¿
+        // æœ‰éç©ºåˆ—è¡¨ï¼Ÿ
         if (o != NULL) {
             if (checkType(c,o,OBJ_LIST)) {
                 return;
             } else {
-                // ·Ç¿ÕÁĞ±í
+                // éç©ºåˆ—è¡¨
                 if (listTypeLength(o) != 0) {
                     /* Non empty list, this is like a normal [LR]POP. */
-                    // µ¯³öÖµ
+                    // å¼¹å‡ºå€¼
                     robj *value = listTypePop(o,where);
                     serverAssert(value != NULL);
 
-                    // »Ø¸´¿Í»§¶Ë
+                    // å›å¤å®¢æˆ·ç«¯
                     addReplyArrayLen(c,2);
-                    // »Ø¸´µ¯³öÔªËØµÄÁĞ±í
+                    // å›å¤å¼¹å‡ºå…ƒç´ çš„åˆ—è¡¨
                     addReplyBulk(c,c->argv[j]);
-                    // »Ø¸´µ¯³öÖµ
+                    // å›å¤å¼¹å‡ºå€¼
                     addReplyBulk(c,value);
                     decrRefCount(value);
                     listElementsRemoved(c,c->argv[j],where,o,1);
 
                     /* Replicate it as an [LR]POP instead of B[LR]POP. */
-                    // ´«²¥Ò»¸ö [LR]POP ¶ø²»ÊÇ B[LR]POP
+                    // ä¼ æ’­ä¸€ä¸ª [LR]POP è€Œä¸æ˜¯ B[LR]POP
                     rewriteClientCommandVector(c,2,
-                        (where == LIST_HEAD) ? shared.lpop : shared.rpop,
-                        c->argv[j]);
+                                               (where == LIST_HEAD) ? shared.lpop : shared.rpop,
+                                               c->argv[j]);
                     return;
                 }
             }
@@ -1071,8 +1070,8 @@ void blockingPopGenericCommand(client *c, int where) {
 
     /* If we are not allowed to block the client, the only thing
      * we can do is treating it as a timeout (even with timeout 0). */
-    // Èç¹ûÃüÁîÔÚÒ»¸öÊÂÎñÖĞÖ´ĞĞ£¬ÄÇÃ´ÎªÁË²»²úÉúËÀµÈ´ı
-    // ·şÎñÆ÷Ö»ÄÜÏò¿Í»§¶Ë·¢ËÍÒ»¸ö¿Õ»Ø¸´
+    // å¦‚æœå‘½ä»¤åœ¨ä¸€ä¸ªäº‹åŠ¡ä¸­æ‰§è¡Œï¼Œé‚£ä¹ˆä¸ºäº†ä¸äº§ç”Ÿæ­»ç­‰å¾…
+    // æœåŠ¡å™¨åªèƒ½å‘å®¢æˆ·ç«¯å‘é€ä¸€ä¸ªç©ºå›å¤
     if (c->flags & CLIENT_DENY_BLOCKING) {
         addReplyNullArray(c);
         return;
@@ -1080,7 +1079,7 @@ void blockingPopGenericCommand(client *c, int where) {
 
     /* If the keys do not exist we must block */
     struct listPos pos = {where};
-  // ËùÓĞÊäÈëÁĞ±í¼ü¶¼²»´æÔÚ£¬Ö»ÄÜ×èÈûÁË
+    // æ‰€æœ‰è¾“å…¥åˆ—è¡¨é”®éƒ½ä¸å­˜åœ¨ï¼Œåªèƒ½é˜»å¡äº†
     blockForKeys(c,BLOCKED_LIST,c->argv + 1,c->argc - 2,timeout,NULL,&pos,NULL);
 }
 
@@ -1095,11 +1094,11 @@ void brpopCommand(client *c) {
 }
 
 void blmoveGenericCommand(client *c, int wherefrom, int whereto, mstime_t timeout) {
-    // È¡³öÁĞ±í¼ü
+    // å–å‡ºåˆ—è¡¨é”®
     robj *key = lookupKeyWrite(c->db, c->argv[1]);
     if (checkType(c,key,OBJ_LIST)) return;
 
-    // ¼üÎª¿Õ£¬×èÈû
+    // é”®ä¸ºç©ºï¼Œé˜»å¡
     if (key == NULL) {
         if (c->flags & CLIENT_DENY_BLOCKING) {
             /* Blocking against an empty list when blocking is not allowed
@@ -1110,7 +1109,7 @@ void blmoveGenericCommand(client *c, int wherefrom, int whereto, mstime_t timeou
             struct listPos pos = {wherefrom, whereto};
             blockForKeys(c,BLOCKED_LIST,c->argv + 1,1,timeout,c->argv[2],&pos,NULL);
         }
-    // ¼ü·Ç¿Õ£¬Ö´ĞĞ RPOPLPUSH
+        // é”®éç©ºï¼Œæ‰§è¡Œ RPOPLPUSH
     } else {
         /* The list exists and has elements, so
          * the regular lmoveCommand is executed. */
@@ -1121,23 +1120,23 @@ void blmoveGenericCommand(client *c, int wherefrom, int whereto, mstime_t timeou
 
 /* BLMOVE <source> <destination> (LEFT|RIGHT) (LEFT|RIGHT) <timeout> */
 void blmoveCommand(client *c) {
-    // È¡³ö timeout ²ÎÊı
+    // å–å‡º timeout å‚æ•°
     mstime_t timeout;
     int wherefrom, whereto;
     if (getListPositionFromObjectOrReply(c,c->argv[3],&wherefrom)
-        != C_OK) return;
+    != C_OK) return;
     if (getListPositionFromObjectOrReply(c,c->argv[4],&whereto)
-        != C_OK) return;
+    != C_OK) return;
     if (getTimeoutFromObjectOrReply(c,c->argv[5],&timeout,UNIT_SECONDS)
-        != C_OK) return;
+    != C_OK) return;
     blmoveGenericCommand(c,wherefrom,whereto,timeout);
 }
 
 /* BRPOPLPUSH <source> <destination> <timeout> */
 void brpoplpushCommand(client *c) {
-    // È¡³ö timeout ²ÎÊı
+    // å–å‡º timeout å‚æ•°
     mstime_t timeout;
     if (getTimeoutFromObjectOrReply(c,c->argv[3],&timeout,UNIT_SECONDS)
-        != C_OK) return;
+    != C_OK) return;
     blmoveGenericCommand(c, LIST_TAIL, LIST_HEAD, timeout);
 }

@@ -253,14 +253,14 @@ endif
 endif
 
 ifndef V
-    define MAKE_INSTALL
-        @printf '    %b %b\n' $(LINKCOLOR)INSTALL$(ENDCOLOR) $(BINCOLOR)$(1)$(ENDCOLOR) 1>&2
-        @$(INSTALL) $(1) $(2)
-    endef
+define MAKE_INSTALL
+	@printf '    %b %b\n' $(LINKCOLOR)INSTALL$(ENDCOLOR) $(BINCOLOR)$(1)$(ENDCOLOR) 1>&2
+	@$(INSTALL) $(1) $(2)
+endef
 else
-    define MAKE_INSTALL
-        $(INSTALL) $(1) $(2)
-    endef
+define MAKE_INSTALL
+	$(INSTALL) $(1) $(2)
+endef
 endif
 
 REDIS_CC=$(QUIET_CC)$(CC) $(FINAL_CFLAGS)

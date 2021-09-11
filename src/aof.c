@@ -497,7 +497,7 @@ void flushAppendOnlyFile(int force) {
             // 有 fsync 正在后台进行 。。。
             if (server.aof_flush_postponed_start == 0) {
                 /* No previous write postponing, remember that we are
-                 * postponing the flush and return. */
+                 * postponing the flush and return.
                  *
                  * 前面没有推迟过 write 操作，这里将推迟写操作的时间记录下来
                  * 然后就返回，不执行 write 或者 fsync

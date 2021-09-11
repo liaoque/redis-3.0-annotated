@@ -34,96 +34,96 @@
 /* Node, List, and Iterator are the only data structures used currently. */
 
 /*
- * Ë«¶ËÁ´±í½Úµã
+ * åŒç«¯é“¾è¡¨èŠ‚ç‚¹
  */
 typedef struct listNode {
 
-    // Ç°ÖÃ½Úµã
+    // å‰ç½®èŠ‚ç‚¹
     struct listNode *prev;
 
-    // ºóÖÃ½Úµã
+    // åç½®èŠ‚ç‚¹
     struct listNode *next;
 
-    // ½ÚµãµÄÖµ
+    // èŠ‚ç‚¹çš„å€¼
     void *value;
 
 } listNode;
 
 /*
- * Ë«¶ËÁ´±íµü´úÆ÷
+ * åŒç«¯é“¾è¡¨è¿­ä»£å™¨
  */
 typedef struct listIter {
 
-    // µ±Ç°µü´úµ½µÄ½Úµã
+    // å½“å‰è¿­ä»£åˆ°çš„èŠ‚ç‚¹
     listNode *next;
 
-    // µü´úµÄ·½Ïò
+    // è¿­ä»£çš„æ–¹å‘
     int direction;
 
 } listIter;
 
 /*
- * Ë«¶ËÁ´±í½á¹¹
+ * åŒç«¯é“¾è¡¨ç»“æ„
  */
 typedef struct list {
 
-    // ±íÍ·½Úµã
+    // è¡¨å¤´èŠ‚ç‚¹
     listNode *head;
 
-    // ±íÎ²½Úµã
+    // è¡¨å°¾èŠ‚ç‚¹
     listNode *tail;
 
-    // ½ÚµãÖµ¸´ÖÆº¯Êı
+    // èŠ‚ç‚¹å€¼å¤åˆ¶å‡½æ•°
     void *(*dup)(void *ptr);
 
-    // ½ÚµãÖµÊÍ·Åº¯Êı
+    // èŠ‚ç‚¹å€¼é‡Šæ”¾å‡½æ•°
     void (*free)(void *ptr);
 
-    // ½ÚµãÖµ¶Ô±Èº¯Êı
+    // èŠ‚ç‚¹å€¼å¯¹æ¯”å‡½æ•°
     int (*match)(void *ptr, void *key);
 
-    // Á´±íËù°üº¬µÄ½ÚµãÊıÁ¿
+    // é“¾è¡¨æ‰€åŒ…å«çš„èŠ‚ç‚¹æ•°é‡
     unsigned long len;
 
 } list;
 
 /* Functions implemented as macros */
-// ·µ»Ø¸ø¶¨Á´±íËù°üº¬µÄ½ÚµãÊıÁ¿
+// è¿”å›ç»™å®šé“¾è¡¨æ‰€åŒ…å«çš„èŠ‚ç‚¹æ•°é‡
 // T = O(1)
 #define listLength(l) ((l)->len)
-// ·µ»Ø¸ø¶¨Á´±íµÄ±íÍ·½Úµã
+// è¿”å›ç»™å®šé“¾è¡¨çš„è¡¨å¤´èŠ‚ç‚¹
 // T = O(1)
 #define listFirst(l) ((l)->head)
-// ·µ»Ø¸ø¶¨Á´±íµÄ±íÎ²½Úµã
+// è¿”å›ç»™å®šé“¾è¡¨çš„è¡¨å°¾èŠ‚ç‚¹
 // T = O(1)
 #define listLast(l) ((l)->tail)
-// ·µ»Ø¸ø¶¨½ÚµãµÄÇ°ÖÃ½Úµã
+// è¿”å›ç»™å®šèŠ‚ç‚¹çš„å‰ç½®èŠ‚ç‚¹
 // T = O(1)
 #define listPrevNode(n) ((n)->prev)
-// ·µ»Ø¸ø¶¨½ÚµãµÄºóÖÃ½Úµã
+// è¿”å›ç»™å®šèŠ‚ç‚¹çš„åç½®èŠ‚ç‚¹
 // T = O(1)
 #define listNextNode(n) ((n)->next)
-// ·µ»Ø¸ø¶¨½ÚµãµÄÖµ
+// è¿”å›ç»™å®šèŠ‚ç‚¹çš„å€¼
 // T = O(1)
 #define listNodeValue(n) ((n)->value)
 
-// ½«Á´±í l µÄÖµ¸´ÖÆº¯ÊıÉèÖÃÎª m
+// å°†é“¾è¡¨ l çš„å€¼å¤åˆ¶å‡½æ•°è®¾ç½®ä¸º m
 // T = O(1)
 #define listSetDupMethod(l,m) ((l)->dup = (m))
-// ½«Á´±í l µÄÖµÊÍ·Åº¯ÊıÉèÖÃÎª m
+// å°†é“¾è¡¨ l çš„å€¼é‡Šæ”¾å‡½æ•°è®¾ç½®ä¸º m
 // T = O(1)
 #define listSetFreeMethod(l,m) ((l)->free = (m))
-// ½«Á´±íµÄ¶Ô±Èº¯ÊıÉèÖÃÎª m
+// å°†é“¾è¡¨çš„å¯¹æ¯”å‡½æ•°è®¾ç½®ä¸º m
 // T = O(1)
 #define listSetMatchMethod(l,m) ((l)->match = (m))
 
-// ·µ»Ø¸ø¶¨Á´±íµÄÖµ¸´ÖÆº¯Êı
+// è¿”å›ç»™å®šé“¾è¡¨çš„å€¼å¤åˆ¶å‡½æ•°
 // T = O(1)
 #define listGetDupMethod(l) ((l)->dup)
-// ·µ»Ø¸ø¶¨Á´±íµÄÖµÊÍ·Åº¯Êı
+// è¿”å›ç»™å®šé“¾è¡¨çš„å€¼é‡Šæ”¾å‡½æ•°
 // T = O(1)
 #define listGetFreeMethod(l) ((l)->free)
-// ·µ»Ø¸ø¶¨Á´±íµÄÖµ¶Ô±Èº¯Êı
+// è¿”å›ç»™å®šé“¾è¡¨çš„å€¼å¯¹æ¯”å‡½æ•°
 // T = O(1)
 #define listGetMatchMethod(l) ((l)->match)
 
@@ -147,13 +147,16 @@ void listRotateTailToHead(list *list);
 void listRotateHeadToTail(list *list);
 void listJoin(list *l, list *o);
 
-/* Directions for iterators */
- *
- * µü´úÆ÷½øĞĞµü´úµÄ·½Ïò
- */
-// ´Ó±íÍ·Ïò±íÎ²½øĞĞµü´ú
+/* Directions for iterators
+*
+* è¿­ä»£å™¨è¿›è¡Œè¿­ä»£çš„æ–¹å‘
+*/
+// ä»è¡¨å¤´å‘è¡¨å°¾è¿›è¡Œè¿­ä»£
 #define AL_START_HEAD 0
-// ´Ó±íÎ²µ½±íÍ·½øĞĞµü´ú
+// ä»è¡¨å°¾åˆ°è¡¨å¤´è¿›è¡Œè¿­ä»£
 #define AL_START_TAIL 1
 
 #endif /* __ADLIST_H__ */
+
+
+

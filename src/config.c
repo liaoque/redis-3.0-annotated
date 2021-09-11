@@ -401,15 +401,15 @@ void loadServerConfigFromString(char *config) {
         int argc;
 
         linenum = i+1;
-        // ÒÆ³ý×Ö·û´®µÄÇ°ÖÃ¿Õ°×ºÍºó×º¿Õ°×
+        // ï¿½Æ³ï¿½ï¿½Ö·ï¿½ï¿½ï¿½ï¿½ï¿½Ç°ï¿½Ã¿Õ°×ºÍºï¿½×ºï¿½Õ°ï¿½
         lines[i] = sdstrim(lines[i]," \t\r\n");
 
         /* Skip comments and blank lines */
-        // Ìø¹ý¿Õ°×ÐÐ
+        // ï¿½ï¿½ï¿½ï¿½ï¿½Õ°ï¿½ï¿½ï¿½
         if (lines[i][0] == '#' || lines[i][0] == '\0') continue;
 
         /* Split into arguments */
-        // ½«×Ö·û´®·Ö¸î³É¶à¸ö²ÎÊý
+        // ï¿½ï¿½ï¿½Ö·ï¿½ï¿½ï¿½ï¿½Ö¸ï¿½É¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         argv = sdssplitargs(lines[i],&argc);
         if (argv == NULL) {
             err = "Unbalanced quotes in configuration line";
@@ -417,14 +417,14 @@ void loadServerConfigFromString(char *config) {
         }
 
         /* Skip this line if the resulting command vector is empty. */
-        // Ìø¹ý¿Õ°×²ÎÊý
+        // ï¿½ï¿½ï¿½ï¿½ï¿½Õ°×²ï¿½ï¿½ï¿½
         if (argc == 0) {
             sdsfreesplitres(argv,argc);
             continue;
         }
 
-        // ½«Ñ¡ÏîÃû×Ö×ª»»³ÉÐ¡Ð´
-        // ÀýÈç TIMEOUT ×ª»»³É timeout
+        // ï¿½ï¿½Ñ¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×ªï¿½ï¿½ï¿½ï¿½Ð¡Ð´
+        // ï¿½ï¿½ï¿½ï¿½ TIMEOUT ×ªï¿½ï¿½ï¿½ï¿½ timeout
         sdstolower(argv[0]);
 
         /* Iterate the configs that are standard */
@@ -607,14 +607,14 @@ void loadServerConfigFromString(char *config) {
         } else if (!strcasecmp(argv[0],"sentinel")) {
             /* argc == 1 is handled by main() as we need to enter the sentinel
              * mode ASAP. */
-            // Èç¹û SENTINEL ÃüÁî²»Îª¿Õ£¬ÄÇÃ´Ö´ÐÐÒÔÏÂ´úÂë
+            // ï¿½ï¿½ï¿½ SENTINEL ï¿½ï¿½ï¿½î²»Îªï¿½Õ£ï¿½ï¿½ï¿½Ã´Ö´ï¿½ï¿½ï¿½ï¿½ï¿½Â´ï¿½ï¿½ï¿½
             if (argc != 1) {
-                // Èç¹û SENTINEL Ä£Ê½Î´¿ªÆô£¬ÄÇÃ´³ö´í
+                // ï¿½ï¿½ï¿½ SENTINEL Ä£Ê½Î´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ã´ï¿½ï¿½ï¿½ï¿½
                 if (!server.sentinel_mode) {
                     err = "sentinel directive while not in sentinel mode";
                     goto loaderr;
                 }
-                // ÔØÈë SENTINEL Ïà¹ØÑ¡Ïî
+                // ï¿½ï¿½ï¿½ï¿½ SENTINEL ï¿½ï¿½ï¿½Ñ¡ï¿½ï¿½
                 queueSentinelConfig(argv+1,argc-1,linenum,lines[i]);
             }
         } else {
@@ -649,19 +649,19 @@ loaderr:
 
 /* Load the server configuration from the specified filename.
  *
- * ´Ó¸ø¶¨ÎÄ¼þÖÐÔØÈë·þÎñÆ÷ÅäÖÃ¡£
+ * ï¿½Ó¸ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ã¡ï¿½
  *
  * The function appends the additional configuration directives stored
  * in the 'options' string to the config file before loading.
  *
- * options ×Ö·û´®»á±»×·¼Óµ½ÎÄ¼þËùÔØÈëµÄÄÚÈÝµÄºóÃæ¡£
+ * options ï¿½Ö·ï¿½ï¿½ï¿½ï¿½á±»×·ï¿½Óµï¿½ï¿½Ä¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÝµÄºï¿½ï¿½æ¡£
  *
  * Both filename and options can be NULL, in such a case are considered
  * empty. This way loadServerConfig can be used to just load a file or
  * just load a string. 
  *
- * filename ºÍ options ¶¼¿ÉÒÔÊÇ NULL £¬ÔÚÕâÖÖÇé¿öÏÂ£¬
- * ·þÎñÆ÷ÅäÖÃÎÄ¼þÊÓÎª¿ÕÎÄ¼þ¡£
+ * filename ï¿½ï¿½ options ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ NULL ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â£ï¿½
+ * ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½Îªï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½
  */
 void loadServerConfig(char *filename, char config_from_stdin, char *options) {
     sds config = sdsempty();
@@ -669,7 +669,7 @@ void loadServerConfig(char *filename, char config_from_stdin, char *options) {
     FILE *fp;
 
     /* Load the file content */
-    // ÔØÈëÎÄ¼þÄÚÈÝ
+    // ï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½ï¿½ï¿½
     if (filename) {
         if ((fp = fopen(filename,"r")) == NULL) {
             serverLog(LL_WARNING,
@@ -690,12 +690,12 @@ void loadServerConfig(char *filename, char config_from_stdin, char *options) {
     }
 
     /* Append the additional options */
-    // ×·¼Ó options ×Ö·û´®µ½ÄÚÈÝµÄÄ©Î²
+    // ×·ï¿½ï¿½ options ï¿½Ö·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ýµï¿½Ä©Î²
     if (options) {
         config = sdscat(config,"\n");
         config = sdscat(config,options);
     }
-    // ¸ù¾Ý×Ö·û´®ÄÚÈÝ£¬ÉèÖÃ·þÎñÆ÷ÅäÖÃ
+    // ï¿½ï¿½ï¿½ï¿½ï¿½Ö·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý£ï¿½ï¿½ï¿½ï¿½Ã·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     loadServerConfigFromString(config);
     sdsfree(config);
 }

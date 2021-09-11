@@ -39,18 +39,18 @@
 /* Note that these encodings are ordered, so:
  * INTSET_ENC_INT16 < INTSET_ENC_INT32 < INTSET_ENC_INT64. */
 /*
- * intset µÄ±àÂë·½Ê½
+ * intset çš„ç¼–ç æ–¹å¼
  */
 #define INTSET_ENC_INT16 (sizeof(int16_t))
 #define INTSET_ENC_INT32 (sizeof(int32_t))
 #define INTSET_ENC_INT64 (sizeof(int64_t))
 
-/* Return the required encoding for the provided value. */
- *
- * ·µ»ØÊÊÓÃÓÚ´«ÈëÖµ v µÄ±àÂë·½Ê½
- *
- * T = O(1)
- */
+/* Return the required encoding for the provided value.
+*
+* è¿”å›é€‚ç”¨äºä¼ å…¥å€¼ v çš„ç¼–ç æ–¹å¼
+*
+* T = O(1)
+*/
 static uint8_t _intsetValueEncoding(int64_t v) {
     if (v < INT32_MIN || v > INT32_MAX)
         return INTSET_ENC_INT64;
@@ -60,9 +60,9 @@ static uint8_t _intsetValueEncoding(int64_t v) {
         return INTSET_ENC_INT16;
 }
 
-/* Return the value at pos, given an encoding. 
+/* Return the value at pos, given an encoding.
  *
- * ¸ù¾İ¸ø¶¨µÄ±àÂë·½Ê½ enc £¬·µ»Ø¼¯ºÏµÄµ×²ãÊı×éÔÚ pos Ë÷ÒıÉÏµÄÔªËØ¡£
+ * æ ¹æ®ç»™å®šçš„ç¼–ç æ–¹å¼ enc ï¼Œè¿”å›é›†åˆçš„åº•å±‚æ•°ç»„åœ¨ pos ç´¢å¼•ä¸Šçš„å…ƒç´ ã€‚
  *
  * T = O(1)
  */
@@ -71,167 +71,167 @@ static int64_t _intsetGetEncoded(intset *is, int pos, uint8_t enc) {
     int32_t v32;
     int16_t v16;
 
-    // ((ENCODING*)is->contents) Ê×ÏÈ½«Êı×é×ª»»»Ø±»±àÂëµÄÀàĞÍ
-    // È»ºó ((ENCODING*)is->contents)+pos ¼ÆËã³öÔªËØÔÚÊı×éÖĞµÄÕıÈ·Î»ÖÃ
-    // Ö®ºó member(&vEnc, ..., sizeof(vEnc)) ÔÙ´ÓÊı×éÖĞ¿½±´³öÕıÈ·ÊıÁ¿µÄ×Ö½Ú
-    // Èç¹ûÓĞĞèÒªµÄ»°£¬ memrevEncifbe(&vEnc) »á¶Ô¿½±´³öµÄ×Ö½Ú½øĞĞ´óĞ¡¶Ë×ª»»
-    // ×îºó½«Öµ·µ»Ø
+    // ((ENCODING*)is->contents) é¦–å…ˆå°†æ•°ç»„è½¬æ¢å›è¢«ç¼–ç çš„ç±»å‹
+    // ç„¶å ((ENCODING*)is->contents)+pos è®¡ç®—å‡ºå…ƒç´ åœ¨æ•°ç»„ä¸­çš„æ­£ç¡®ä½ç½®
+    // ä¹‹å member(&vEnc, ..., sizeof(vEnc)) å†ä»æ•°ç»„ä¸­æ‹·è´å‡ºæ­£ç¡®æ•°é‡çš„å­—èŠ‚
+    // å¦‚æœæœ‰éœ€è¦çš„è¯ï¼Œ memrevEncifbe(&vEnc) ä¼šå¯¹æ‹·è´å‡ºçš„å­—èŠ‚è¿›è¡Œå¤§å°ç«¯è½¬æ¢
+    // æœ€åå°†å€¼è¿”å›
     if (enc == INTSET_ENC_INT64) {
-        memcpy(&v64,((int64_t*)is->contents)+pos,sizeof(v64));
+        memcpy(&v64, ((int64_t *) is->contents) + pos, sizeof(v64));
         memrev64ifbe(&v64);
         return v64;
     } else if (enc == INTSET_ENC_INT32) {
-        memcpy(&v32,((int32_t*)is->contents)+pos,sizeof(v32));
+        memcpy(&v32, ((int32_t *) is->contents) + pos, sizeof(v32));
         memrev32ifbe(&v32);
         return v32;
     } else {
-        memcpy(&v16,((int16_t*)is->contents)+pos,sizeof(v16));
+        memcpy(&v16, ((int16_t *) is->contents) + pos, sizeof(v16));
         memrev16ifbe(&v16);
         return v16;
     }
 }
 
-/* Return the value at pos, using the configured encoding. 
+/* Return the value at pos, using the configured encoding.
  *
- * ¸ù¾İ¼¯ºÏµÄ±àÂë·½Ê½£¬·µ»Øµ×²ãÊı×éÔÚ pos Ë÷ÒıÉÏµÄÖµ
+ * æ ¹æ®é›†åˆçš„ç¼–ç æ–¹å¼ï¼Œè¿”å›åº•å±‚æ•°ç»„åœ¨ pos ç´¢å¼•ä¸Šçš„å€¼
  *
  * T = O(1)
  */
 static int64_t _intsetGet(intset *is, int pos) {
-    return _intsetGetEncoded(is,pos,intrev32ifbe(is->encoding));
+    return _intsetGetEncoded(is, pos, intrev32ifbe(is->encoding));
 }
 
-/* Set the value at pos, using the configured encoding. 
+/* Set the value at pos, using the configured encoding.
  *
- * ¸ù¾İ¼¯ºÏµÄ±àÂë·½Ê½£¬½«µ×²ãÊı×éÔÚ pos Î»ÖÃÉÏµÄÖµÉèÎª value ¡£
+ * æ ¹æ®é›†åˆçš„ç¼–ç æ–¹å¼ï¼Œå°†åº•å±‚æ•°ç»„åœ¨ pos ä½ç½®ä¸Šçš„å€¼è®¾ä¸º value ã€‚
  *
  * T = O(1)
  */
 static void _intsetSet(intset *is, int pos, int64_t value) {
-    // È¡³ö¼¯ºÏµÄ±àÂë·½Ê½
+    // å–å‡ºé›†åˆçš„ç¼–ç æ–¹å¼
     uint32_t encoding = intrev32ifbe(is->encoding);
 
-    // ¸ù¾İ±àÂë ((Enc_t*)is->contents) ½«Êı×é×ª»»»ØÕıÈ·µÄÀàĞÍ
-    // È»ºó ((Enc_t*)is->contents)[pos] ¶¨Î»µ½Êı×éË÷ÒıÉÏ
-    // ½Ó×Å ((Enc_t*)is->contents)[pos] = value ½«Öµ¸³¸øÊı×é
-    // ×îºó£¬ ((Enc_t*)is->contents)+pos ¶¨Î»µ½¸Õ¸ÕÉèÖÃµÄĞÂÖµÉÏ 
-    // Èç¹ûÓĞĞèÒªµÄ»°£¬ memrevEncifbe ½«¶ÔÖµ½øĞĞ´óĞ¡¶Ë×ª»»
+    // æ ¹æ®ç¼–ç  ((Enc_t*)is->contents) å°†æ•°ç»„è½¬æ¢å›æ­£ç¡®çš„ç±»å‹
+    // ç„¶å ((Enc_t*)is->contents)[pos] å®šä½åˆ°æ•°ç»„ç´¢å¼•ä¸Š
+    // æ¥ç€ ((Enc_t*)is->contents)[pos] = value å°†å€¼èµ‹ç»™æ•°ç»„
+    // æœ€åï¼Œ ((Enc_t*)is->contents)+pos å®šä½åˆ°åˆšåˆšè®¾ç½®çš„æ–°å€¼ä¸Š
+    // å¦‚æœæœ‰éœ€è¦çš„è¯ï¼Œ memrevEncifbe å°†å¯¹å€¼è¿›è¡Œå¤§å°ç«¯è½¬æ¢
     if (encoding == INTSET_ENC_INT64) {
-        ((int64_t*)is->contents)[pos] = value;
-        memrev64ifbe(((int64_t*)is->contents)+pos);
+        ((int64_t *) is->contents)[pos] = value;
+        memrev64ifbe(((int64_t *) is->contents) + pos);
     } else if (encoding == INTSET_ENC_INT32) {
-        ((int32_t*)is->contents)[pos] = value;
-        memrev32ifbe(((int32_t*)is->contents)+pos);
+        ((int32_t *) is->contents)[pos] = value;
+        memrev32ifbe(((int32_t *) is->contents) + pos);
     } else {
-        ((int16_t*)is->contents)[pos] = value;
-        memrev16ifbe(((int16_t*)is->contents)+pos);
+        ((int16_t *) is->contents)[pos] = value;
+        memrev16ifbe(((int16_t *) is->contents) + pos);
     }
 }
 
-/* Create an empty intset. 
+/* Create an empty intset.
  *
- * ´´½¨²¢·µ»ØÒ»¸öĞÂµÄ¿ÕÕûÊı¼¯ºÏ
+ * åˆ›å»ºå¹¶è¿”å›ä¸€ä¸ªæ–°çš„ç©ºæ•´æ•°é›†åˆ
  *
  * T = O(1)
  */
 intset *intsetNew(void) {
 
-    // ÎªÕûÊı¼¯ºÏ½á¹¹·ÖÅä¿Õ¼ä
+    // ä¸ºæ•´æ•°é›†åˆç»“æ„åˆ†é…ç©ºé—´
     intset *is = zmalloc(sizeof(intset));
 
-    // ÉèÖÃ³õÊ¼±àÂë
+    // è®¾ç½®åˆå§‹ç¼–ç 
     is->encoding = intrev32ifbe(INTSET_ENC_INT16);
 
-    // ³õÊ¼»¯ÔªËØÊıÁ¿
+    // åˆå§‹åŒ–å…ƒç´ æ•°é‡
     is->length = 0;
 
     return is;
 }
 
-/* Resize the intset 
+/* Resize the intset
  *
- * µ÷ÕûÕûÊı¼¯ºÏµÄÄÚ´æ¿Õ¼ä´óĞ¡
+ * è°ƒæ•´æ•´æ•°é›†åˆçš„å†…å­˜ç©ºé—´å¤§å°
  *
- * Èç¹ûµ÷ÕûºóµÄ´óĞ¡Òª±È¼¯ºÏÔ­À´µÄ´óĞ¡Òª´ó£¬
- * ÄÇÃ´¼¯ºÏÖĞÔ­ÓĞÔªËØµÄÖµ²»»á±»¸Ä±ä¡£
+ * å¦‚æœè°ƒæ•´åçš„å¤§å°è¦æ¯”é›†åˆåŸæ¥çš„å¤§å°è¦å¤§ï¼Œ
+ * é‚£ä¹ˆé›†åˆä¸­åŸæœ‰å…ƒç´ çš„å€¼ä¸ä¼šè¢«æ”¹å˜ã€‚
  *
- * ·µ»ØÖµ£ºµ÷Õû´óĞ¡ºóµÄÕûÊı¼¯ºÏ
+ * è¿”å›å€¼ï¼šè°ƒæ•´å¤§å°åçš„æ•´æ•°é›†åˆ
  *
  * T = O(N)
  */
 static intset *intsetResize(intset *is, uint32_t len) {
 
-    // ¼ÆËãÊı×éµÄ¿Õ¼ä´óĞ¡
-    uint32_t size = len*intrev32ifbe(is->encoding);
+    // è®¡ç®—æ•°ç»„çš„ç©ºé—´å¤§å°
+    uint32_t size = len * intrev32ifbe(is->encoding);
 
-    // ¸ù¾İ¿Õ¼ä´óĞ¡£¬ÖØĞÂ·ÖÅä¿Õ¼ä
-    // ×¢ÒâÕâÀïÊ¹ÓÃµÄÊÇ zrealloc £¬
-    // ËùÒÔÈç¹ûĞÂ¿Õ¼ä´óĞ¡±ÈÔ­À´µÄ¿Õ¼ä´óĞ¡Òª´ó£¬
-    // ÄÇÃ´Êı×éÔ­ÓĞµÄÊı¾İ»á±»±£Áô
-    is = zrealloc(is,sizeof(intset)+size);
+    // æ ¹æ®ç©ºé—´å¤§å°ï¼Œé‡æ–°åˆ†é…ç©ºé—´
+    // æ³¨æ„è¿™é‡Œä½¿ç”¨çš„æ˜¯ zrealloc ï¼Œ
+    // æ‰€ä»¥å¦‚æœæ–°ç©ºé—´å¤§å°æ¯”åŸæ¥çš„ç©ºé—´å¤§å°è¦å¤§ï¼Œ
+    // é‚£ä¹ˆæ•°ç»„åŸæœ‰çš„æ•°æ®ä¼šè¢«ä¿ç•™
+    is = zrealloc(is, sizeof(intset) + size);
 
     return is;
 }
 
 /* Search for the position of "value".
- * 
- * ÔÚ¼¯ºÏ is µÄµ×²ãÊı×éÖĞ²éÕÒÖµ value ËùÔÚµÄË÷Òı¡£
  *
- * Return 1 when the value was found and 
- * sets "pos" to the position of the value within the intset. 
+ * åœ¨é›†åˆ is çš„åº•å±‚æ•°ç»„ä¸­æŸ¥æ‰¾å€¼ value æ‰€åœ¨çš„ç´¢å¼•ã€‚
  *
- * ³É¹¦ÕÒµ½ value Ê±£¬º¯Êı·µ»Ø 1 £¬²¢½« *pos µÄÖµÉèÎª value ËùÔÚµÄË÷Òı¡£
+ * Return 1 when the value was found and
+ * sets "pos" to the position of the value within the intset.
  *
- * Return 0 when the value is not present in the intset 
- * and sets "pos" to the position where "value" can be inserted. 
+ * æˆåŠŸæ‰¾åˆ° value æ—¶ï¼Œå‡½æ•°è¿”å› 1 ï¼Œå¹¶å°† *pos çš„å€¼è®¾ä¸º value æ‰€åœ¨çš„ç´¢å¼•ã€‚
  *
- * µ±ÔÚÊı×éÖĞÃ»ÕÒµ½ value Ê±£¬·µ»Ø 0 ¡£
- * ²¢½« *pos µÄÖµÉèÎª value ¿ÉÒÔ²åÈëµ½Êı×éÖĞµÄÎ»ÖÃ¡£
+ * Return 0 when the value is not present in the intset
+ * and sets "pos" to the position where "value" can be inserted.
+ *
+ * å½“åœ¨æ•°ç»„ä¸­æ²¡æ‰¾åˆ° value æ—¶ï¼Œè¿”å› 0 ã€‚
+ * å¹¶å°† *pos çš„å€¼è®¾ä¸º value å¯ä»¥æ’å…¥åˆ°æ•°ç»„ä¸­çš„ä½ç½®ã€‚
  *
  * T = O(log N)
  */
 static uint8_t intsetSearch(intset *is, int64_t value, uint32_t *pos) {
-    int min = 0, max = intrev32ifbe(is->length)-1, mid = -1;
+    int min = 0, max = intrev32ifbe(is->length) - 1, mid = -1;
     int64_t cur = -1;
 
     /* The value can never be found when the set is empty */
-    // ´¦Àí is Îª¿ÕÊ±µÄÇé¿ö
+    // å¤„ç† is ä¸ºç©ºæ—¶çš„æƒ…å†µ
     if (intrev32ifbe(is->length) == 0) {
         if (pos) *pos = 0;
         return 0;
     } else {
         /* Check for the case where we know we cannot find the value,
          * but do know the insert position. */
-  		// ÒòÎªµ×²ãÊı×éÊÇÓĞĞòµÄ£¬Èç¹û value ±ÈÊı×éÖĞ×îºóÒ»¸öÖµ¶¼Òª´ó
-        // ÄÇÃ´ value ¿Ï¶¨²»´æÔÚÓÚ¼¯ºÏÖĞ£¬
-        // ²¢ÇÒÓ¦¸Ã½« value Ìí¼Óµ½µ×²ãÊı×éµÄ×îÄ©¶Ë
-        if (value > _intsetGet(is,max)) {
+        // å› ä¸ºåº•å±‚æ•°ç»„æ˜¯æœ‰åºçš„ï¼Œå¦‚æœ value æ¯”æ•°ç»„ä¸­æœ€åä¸€ä¸ªå€¼éƒ½è¦å¤§
+        // é‚£ä¹ˆ value è‚¯å®šä¸å­˜åœ¨äºé›†åˆä¸­ï¼Œ
+        // å¹¶ä¸”åº”è¯¥å°† value æ·»åŠ åˆ°åº•å±‚æ•°ç»„çš„æœ€æœ«ç«¯
+        if (value > _intsetGet(is, max)) {
             if (pos) *pos = intrev32ifbe(is->length);
             return 0;
-        // ÒòÎªµ×²ãÊı×éÊÇÓĞĞòµÄ£¬Èç¹û value ±ÈÊı×éÖĞ×îÇ°Ò»¸öÖµ¶¼ÒªĞ¡
-        // ÄÇÃ´ value ¿Ï¶¨²»´æÔÚÓÚ¼¯ºÏÖĞ£¬
-        // ²¢ÇÒÓ¦¸Ã½«ËüÌí¼Óµ½µ×²ãÊı×éµÄ×îÇ°¶Ë
-        } else if (value < _intsetGet(is,0)) {
+            // å› ä¸ºåº•å±‚æ•°ç»„æ˜¯æœ‰åºçš„ï¼Œå¦‚æœ value æ¯”æ•°ç»„ä¸­æœ€å‰ä¸€ä¸ªå€¼éƒ½è¦å°
+            // é‚£ä¹ˆ value è‚¯å®šä¸å­˜åœ¨äºé›†åˆä¸­ï¼Œ
+            // å¹¶ä¸”åº”è¯¥å°†å®ƒæ·»åŠ åˆ°åº•å±‚æ•°ç»„çš„æœ€å‰ç«¯
+        } else if (value < _intsetGet(is, 0)) {
             if (pos) *pos = 0;
             return 0;
         }
     }
 
-    // ÔÚÓĞĞòÊı×éÖĞ½øĞĞ¶ş·Ö²éÕÒ
+    // åœ¨æœ‰åºæ•°ç»„ä¸­è¿›è¡ŒäºŒåˆ†æŸ¥æ‰¾
     // T = O(log N)
-    while(max >= min) {
-        mid = ((unsigned int)min + (unsigned int)max) >> 1;
-        cur = _intsetGet(is,mid);
+    while (max >= min) {
+        mid = ((unsigned int) min + (unsigned int) max) >> 1;
+        cur = _intsetGet(is, mid);
         if (value > cur) {
-            min = mid+1;
+            min = mid + 1;
         } else if (value < cur) {
-            max = mid-1;
+            max = mid - 1;
         } else {
             break;
         }
     }
 
-    // ¼ì²éÊÇ·ñÒÑ¾­ÕÒµ½ÁË value
+    // æ£€æŸ¥æ˜¯å¦å·²ç»æ‰¾åˆ°äº† value
     if (value == cur) {
         if (pos) *pos = mid;
         return 1;
@@ -241,109 +241,109 @@ static uint8_t intsetSearch(intset *is, int64_t value, uint32_t *pos) {
     }
 }
 
-/* Upgrades the intset to a larger encoding and inserts the given integer. 
+/* Upgrades the intset to a larger encoding and inserts the given integer.
  *
- * ¸ù¾İÖµ value ËùÊ¹ÓÃµÄ±àÂë·½Ê½£¬¶ÔÕûÊı¼¯ºÏµÄ±àÂë½øĞĞÉı¼¶£¬
- * ²¢½«Öµ value Ìí¼Óµ½Éı¼¶ºóµÄÕûÊı¼¯ºÏÖĞ¡£
+ * æ ¹æ®å€¼ value æ‰€ä½¿ç”¨çš„ç¼–ç æ–¹å¼ï¼Œå¯¹æ•´æ•°é›†åˆçš„ç¼–ç è¿›è¡Œå‡çº§ï¼Œ
+ * å¹¶å°†å€¼ value æ·»åŠ åˆ°å‡çº§åçš„æ•´æ•°é›†åˆä¸­ã€‚
  *
- * ·µ»ØÖµ£ºÌí¼ÓĞÂÔªËØÖ®ºóµÄÕûÊı¼¯ºÏ
+ * è¿”å›å€¼ï¼šæ·»åŠ æ–°å…ƒç´ ä¹‹åçš„æ•´æ•°é›†åˆ
  *
  * T = O(N)
  */
 static intset *intsetUpgradeAndAdd(intset *is, int64_t value) {
-    
-    // µ±Ç°µÄ±àÂë·½Ê½
+
+    // å½“å‰çš„ç¼–ç æ–¹å¼
     uint8_t curenc = intrev32ifbe(is->encoding);
 
-    // ĞÂÖµËùĞèµÄ±àÂë·½Ê½
+    // æ–°å€¼æ‰€éœ€çš„ç¼–ç æ–¹å¼
     uint8_t newenc = _intsetValueEncoding(value);
 
-    // µ±Ç°¼¯ºÏµÄÔªËØÊıÁ¿
+    // å½“å‰é›†åˆçš„å…ƒç´ æ•°é‡
     int length = intrev32ifbe(is->length);
 
-    // ¸ù¾İ value µÄÖµ£¬¾ö¶¨ÊÇ½«ËüÌí¼Óµ½µ×²ãÊı×éµÄ×îÇ°¶Ë»¹ÊÇ×îºó¶Ë
-    // ×¢Òâ£¬ÒòÎª value µÄ±àÂë±È¼¯ºÏÔ­ÓĞµÄÆäËûÔªËØµÄ±àÂë¶¼Òª´ó
-    // ËùÒÔ value ÒªÃ´´óÓÚ¼¯ºÏÖĞµÄËùÓĞÔªËØ£¬ÒªÃ´Ğ¡ÓÚ¼¯ºÏÖĞµÄËùÓĞÔªËØ
-    // Òò´Ë£¬value Ö»ÄÜÌí¼Óµ½µ×²ãÊı×éµÄ×îÇ°¶Ë»ò×îºó¶Ë
+    // æ ¹æ® value çš„å€¼ï¼Œå†³å®šæ˜¯å°†å®ƒæ·»åŠ åˆ°åº•å±‚æ•°ç»„çš„æœ€å‰ç«¯è¿˜æ˜¯æœ€åç«¯
+    // æ³¨æ„ï¼Œå› ä¸º value çš„ç¼–ç æ¯”é›†åˆåŸæœ‰çš„å…¶ä»–å…ƒç´ çš„ç¼–ç éƒ½è¦å¤§
+    // æ‰€ä»¥ value è¦ä¹ˆå¤§äºé›†åˆä¸­çš„æ‰€æœ‰å…ƒç´ ï¼Œè¦ä¹ˆå°äºé›†åˆä¸­çš„æ‰€æœ‰å…ƒç´ 
+    // å› æ­¤ï¼Œvalue åªèƒ½æ·»åŠ åˆ°åº•å±‚æ•°ç»„çš„æœ€å‰ç«¯æˆ–æœ€åç«¯
     int prepend = value < 0 ? 1 : 0;
 
     /* First set new encoding and resize */
-    // ¸üĞÂ¼¯ºÏµÄ±àÂë·½Ê½
+    // æ›´æ–°é›†åˆçš„ç¼–ç æ–¹å¼
     is->encoding = intrev32ifbe(newenc);
-    // ¸ù¾İĞÂ±àÂë¶Ô¼¯ºÏ£¨µÄµ×²ãÊı×é£©½øĞĞ¿Õ¼äµ÷Õû
+    // æ ¹æ®æ–°ç¼–ç å¯¹é›†åˆï¼ˆçš„åº•å±‚æ•°ç»„ï¼‰è¿›è¡Œç©ºé—´è°ƒæ•´
     // T = O(N)
-    is = intsetResize(is,intrev32ifbe(is->length)+1);
+    is = intsetResize(is, intrev32ifbe(is->length) + 1);
 
     /* Upgrade back-to-front so we don't overwrite values.
      * Note that the "prepend" variable is used to make sure we have an empty
      * space at either the beginning or the end of the intset. */
-    // ¸ù¾İ¼¯ºÏÔ­À´µÄ±àÂë·½Ê½£¬´Óµ×²ãÊı×éÖĞÈ¡³ö¼¯ºÏÔªËØ
-    // È»ºóÔÙ½«ÔªËØÒÔĞÂ±àÂëµÄ·½Ê½Ìí¼Óµ½¼¯ºÏÖĞ
-    // µ±Íê³ÉÁËÕâ¸ö²½ÖèÖ®ºó£¬¼¯ºÏÖĞËùÓĞÔ­ÓĞµÄÔªËØ¾ÍÍê³ÉÁË´Ó¾É±àÂëµ½ĞÂ±àÂëµÄ×ª»»
-    // ÒòÎªĞÂ·ÖÅäµÄ¿Õ¼ä¶¼·ÅÔÚÊı×éµÄºó¶Ë£¬ËùÒÔ³ÌĞòÏÈ´Óºó¶ËÏòÇ°¶ËÒÆ¶¯ÔªËØ
-    // ¾Ù¸öÀı×Ó£¬¼ÙÉèÔ­À´ÓĞ curenc ±àÂëµÄÈı¸öÔªËØ£¬ËüÃÇÔÚÊı×éÖĞÅÅÁĞÈçÏÂ£º
-    // | x | y | z | 
-    // µ±³ÌĞò¶ÔÊı×é½øĞĞÖØ·ÖÅäÖ®ºó£¬Êı×é¾Í±»À©ÈİÁË£¨·ûºÅ £¿ ±íÊ¾Î´Ê¹ÓÃµÄÄÚ´æ£©£º
+    // æ ¹æ®é›†åˆåŸæ¥çš„ç¼–ç æ–¹å¼ï¼Œä»åº•å±‚æ•°ç»„ä¸­å–å‡ºé›†åˆå…ƒç´ 
+    // ç„¶åå†å°†å…ƒç´ ä»¥æ–°ç¼–ç çš„æ–¹å¼æ·»åŠ åˆ°é›†åˆä¸­
+    // å½“å®Œæˆäº†è¿™ä¸ªæ­¥éª¤ä¹‹åï¼Œé›†åˆä¸­æ‰€æœ‰åŸæœ‰çš„å…ƒç´ å°±å®Œæˆäº†ä»æ—§ç¼–ç åˆ°æ–°ç¼–ç çš„è½¬æ¢
+    // å› ä¸ºæ–°åˆ†é…çš„ç©ºé—´éƒ½æ”¾åœ¨æ•°ç»„çš„åç«¯ï¼Œæ‰€ä»¥ç¨‹åºå…ˆä»åç«¯å‘å‰ç«¯ç§»åŠ¨å…ƒç´ 
+    // ä¸¾ä¸ªä¾‹å­ï¼Œå‡è®¾åŸæ¥æœ‰ curenc ç¼–ç çš„ä¸‰ä¸ªå…ƒç´ ï¼Œå®ƒä»¬åœ¨æ•°ç»„ä¸­æ’åˆ—å¦‚ä¸‹ï¼š
+    // | x | y | z |
+    // å½“ç¨‹åºå¯¹æ•°ç»„è¿›è¡Œé‡åˆ†é…ä¹‹åï¼Œæ•°ç»„å°±è¢«æ‰©å®¹äº†ï¼ˆç¬¦å· ï¼Ÿ è¡¨ç¤ºæœªä½¿ç”¨çš„å†…å­˜ï¼‰ï¼š
     // | x | y | z | ? |   ?   |   ?   |
-    // ÕâÊ±³ÌĞò´ÓÊı×éºó¶Ë¿ªÊ¼£¬ÖØĞÂ²åÈëÔªËØ£º
+    // è¿™æ—¶ç¨‹åºä»æ•°ç»„åç«¯å¼€å§‹ï¼Œé‡æ–°æ’å…¥å…ƒç´ ï¼š
     // | x | y | z | ? |   z   |   ?   |
     // | x | y |   y   |   z   |   ?   |
     // |   x   |   y   |   z   |   ?   |
-    // ×îºó£¬³ÌĞò¿ÉÒÔ½«ĞÂÔªËØÌí¼Óµ½×îºó £¿ ºÅ±êÊ¾µÄÎ»ÖÃÖĞ£º
+    // æœ€åï¼Œç¨‹åºå¯ä»¥å°†æ–°å…ƒç´ æ·»åŠ åˆ°æœ€å ï¼Ÿ å·æ ‡ç¤ºçš„ä½ç½®ä¸­ï¼š
     // |   x   |   y   |   z   |  new  |
-    // ÉÏÃæÑİÊ¾µÄÊÇĞÂÔªËØ±ÈÔ­À´µÄËùÓĞÔªËØ¶¼´óµÄÇé¿ö£¬Ò²¼´ÊÇ prepend == 0
-    // µ±ĞÂÔªËØ±ÈÔ­À´µÄËùÓĞÔªËØ¶¼Ğ¡Ê±£¨prepend == 1£©£¬µ÷ÕûµÄ¹ı³ÌÈçÏÂ£º
+    // ä¸Šé¢æ¼”ç¤ºçš„æ˜¯æ–°å…ƒç´ æ¯”åŸæ¥çš„æ‰€æœ‰å…ƒç´ éƒ½å¤§çš„æƒ…å†µï¼Œä¹Ÿå³æ˜¯ prepend == 0
+    // å½“æ–°å…ƒç´ æ¯”åŸæ¥çš„æ‰€æœ‰å…ƒç´ éƒ½å°æ—¶ï¼ˆprepend == 1ï¼‰ï¼Œè°ƒæ•´çš„è¿‡ç¨‹å¦‚ä¸‹ï¼š
     // | x | y | z | ? |   ?   |   ?   |
     // | x | y | z | ? |   ?   |   z   |
     // | x | y | z | ? |   y   |   z   |
     // | x | y |   x   |   y   |   z   |
-    // µ±Ìí¼ÓĞÂÖµÊ±£¬Ô­±¾µÄ | x | y | µÄÊı¾İ½«±»ĞÂÖµ´úÌæ
+    // å½“æ·»åŠ æ–°å€¼æ—¶ï¼ŒåŸæœ¬çš„ | x | y | çš„æ•°æ®å°†è¢«æ–°å€¼ä»£æ›¿
     // |  new  |   x   |   y   |   z   |
     // T = O(N)
-    while(length--)
-        _intsetSet(is,length+prepend,_intsetGetEncoded(is,length,curenc));
+    while (length--)
+        _intsetSet(is, length + prepend, _intsetGetEncoded(is, length, curenc));
 
     /* Set the value at the beginning or the end. */
-    // ÉèÖÃĞÂÖµ£¬¸ù¾İ prepend µÄÖµÀ´¾ö¶¨ÊÇÌí¼Óµ½Êı×éÍ·»¹ÊÇÊı×éÎ²
+    // è®¾ç½®æ–°å€¼ï¼Œæ ¹æ® prepend çš„å€¼æ¥å†³å®šæ˜¯æ·»åŠ åˆ°æ•°ç»„å¤´è¿˜æ˜¯æ•°ç»„å°¾
     if (prepend)
-        _intsetSet(is,0,value);
+        _intsetSet(is, 0, value);
     else
-        _intsetSet(is,intrev32ifbe(is->length),value);
+        _intsetSet(is, intrev32ifbe(is->length), value);
 
-    // ¸üĞÂÕûÊı¼¯ºÏµÄÔªËØÊıÁ¿
-    is->length = intrev32ifbe(intrev32ifbe(is->length)+1);
+    // æ›´æ–°æ•´æ•°é›†åˆçš„å…ƒç´ æ•°é‡
+    is->length = intrev32ifbe(intrev32ifbe(is->length) + 1);
 
     return is;
 }
 
 /*
- * ÏòÇ°»òÏÈºóÒÆ¶¯Ö¸¶¨Ë÷Òı·¶Î§ÄÚµÄÊı×éÔªËØ
+ * å‘å‰æˆ–å…ˆåç§»åŠ¨æŒ‡å®šç´¢å¼•èŒƒå›´å†…çš„æ•°ç»„å…ƒç´ 
  *
- * º¯ÊıÃûÖĞµÄ MoveTail ÆäÊµÊÇÒ»¸öÓĞÎóµ¼ĞÔµÄÃû×Ö£¬
- * Õâ¸öº¯Êı¿ÉÒÔÏòÇ°»òÏòºóÒÆ¶¯ÔªËØ£¬
- * ¶ø²»½ö½öÊÇÏòºó
+ * å‡½æ•°åä¸­çš„ MoveTail å…¶å®æ˜¯ä¸€ä¸ªæœ‰è¯¯å¯¼æ€§çš„åå­—ï¼Œ
+ * è¿™ä¸ªå‡½æ•°å¯ä»¥å‘å‰æˆ–å‘åç§»åŠ¨å…ƒç´ ï¼Œ
+ * è€Œä¸ä»…ä»…æ˜¯å‘å
  *
- * ÔÚÌí¼ÓĞÂÔªËØµ½Êı×éÊ±£¬¾ÍĞèÒª½øĞĞÏòºóÒÆ¶¯£¬
- * Èç¹ûÊı×é±íÊ¾ÈçÏÂ£¨£¿±íÊ¾Ò»¸öÎ´ÉèÖÃĞÂÖµµÄ¿Õ¼ä£©£º
+ * åœ¨æ·»åŠ æ–°å…ƒç´ åˆ°æ•°ç»„æ—¶ï¼Œå°±éœ€è¦è¿›è¡Œå‘åç§»åŠ¨ï¼Œ
+ * å¦‚æœæ•°ç»„è¡¨ç¤ºå¦‚ä¸‹ï¼ˆï¼Ÿè¡¨ç¤ºä¸€ä¸ªæœªè®¾ç½®æ–°å€¼çš„ç©ºé—´ï¼‰ï¼š
  * | x | y | z | ? |
  *     |<----->|
- * ¶øĞÂÔªËØ n µÄ pos Îª 1 £¬ÄÇÃ´Êı×é½«ÒÆ¶¯ y ºÍ z Á½¸öÔªËØ
+ * è€Œæ–°å…ƒç´  n çš„ pos ä¸º 1 ï¼Œé‚£ä¹ˆæ•°ç»„å°†ç§»åŠ¨ y å’Œ z ä¸¤ä¸ªå…ƒç´ 
  * | x | y | y | z |
  *         |<----->|
- * ½Ó×Å¾Í¿ÉÒÔ½«ĞÂÔªËØ n ÉèÖÃµ½ pos ÉÏÁË£º
+ * æ¥ç€å°±å¯ä»¥å°†æ–°å…ƒç´  n è®¾ç½®åˆ° pos ä¸Šäº†ï¼š
  * | x | n | y | z |
  *
- * µ±´ÓÊı×éÖĞÉ¾³ıÔªËØÊ±£¬¾ÍĞèÒª½øĞĞÏòÇ°ÒÆ¶¯£¬
- * Èç¹ûÊı×é±íÊ¾ÈçÏÂ£¬²¢ÇÒ b ÎªÒªÉ¾³ıµÄÄ¿±ê£º
+ * å½“ä»æ•°ç»„ä¸­åˆ é™¤å…ƒç´ æ—¶ï¼Œå°±éœ€è¦è¿›è¡Œå‘å‰ç§»åŠ¨ï¼Œ
+ * å¦‚æœæ•°ç»„è¡¨ç¤ºå¦‚ä¸‹ï¼Œå¹¶ä¸” b ä¸ºè¦åˆ é™¤çš„ç›®æ ‡ï¼š
  * | a | b | c | d |
  *         |<----->|
- * ÄÇÃ´³ÌĞò¾Í»áÒÆ¶¯ b ºóµÄËùÓĞÔªËØÏòÇ°Ò»¸öÔªËØµÄÎ»ÖÃ£¬
- * ´Ó¶ø¸²¸Ç b µÄÊı¾İ£º
+ * é‚£ä¹ˆç¨‹åºå°±ä¼šç§»åŠ¨ b åçš„æ‰€æœ‰å…ƒç´ å‘å‰ä¸€ä¸ªå…ƒç´ çš„ä½ç½®ï¼Œ
+ * ä»è€Œè¦†ç›– b çš„æ•°æ®ï¼š
  * | a | c | d | d |
  *     |<----->|
- * ×îºó£¬³ÌĞòÔÙ´ÓÊı×éÄ©Î²É¾³ıÒ»¸öÔªËØµÄ¿Õ¼ä£º
+ * æœ€åï¼Œç¨‹åºå†ä»æ•°ç»„æœ«å°¾åˆ é™¤ä¸€ä¸ªå…ƒç´ çš„ç©ºé—´ï¼š
  * | a | c | d |
- * ÕâÑù¾ÍÍê³ÉÁËÉ¾³ı²Ù×÷¡£
+ * è¿™æ ·å°±å®Œæˆäº†åˆ é™¤æ“ä½œã€‚
  *
  * T = O(N)
  */
@@ -351,114 +351,114 @@ static void intsetMoveTail(intset *is, uint32_t from, uint32_t to) {
 
     void *src, *dst;
 
-    // ÒªÒÆ¶¯µÄÔªËØ¸öÊı
-    uint32_t bytes = intrev32ifbe(is->length)-from;
+    // è¦ç§»åŠ¨çš„å…ƒç´ ä¸ªæ•°
+    uint32_t bytes = intrev32ifbe(is->length) - from;
 
-    // ¼¯ºÏµÄ±àÂë·½Ê½
+    // é›†åˆçš„ç¼–ç æ–¹å¼
     uint32_t encoding = intrev32ifbe(is->encoding);
 
-    // ¸ù¾İ²»Í¬µÄ±àÂë
-    // src = (Enc_t*)is->contents+from ¼ÇÂ¼ÒÆ¶¯¿ªÊ¼µÄÎ»ÖÃ
-    // dst = (Enc_t*)is_.contents+to ¼ÇÂ¼ÒÆ¶¯½áÊøµÄÎ»ÖÃ
-    // bytes *= sizeof(Enc_t) ¼ÆËãÒ»¹²ÒªÒÆ¶¯¶àÉÙ×Ö½Ú
+    // æ ¹æ®ä¸åŒçš„ç¼–ç 
+    // src = (Enc_t*)is->contents+from è®°å½•ç§»åŠ¨å¼€å§‹çš„ä½ç½®
+    // dst = (Enc_t*)is_.contents+to è®°å½•ç§»åŠ¨ç»“æŸçš„ä½ç½®
+    // bytes *= sizeof(Enc_t) è®¡ç®—ä¸€å…±è¦ç§»åŠ¨å¤šå°‘å­—èŠ‚
     if (encoding == INTSET_ENC_INT64) {
-        src = (int64_t*)is->contents+from;
-        dst = (int64_t*)is->contents+to;
+        src = (int64_t *) is->contents + from;
+        dst = (int64_t *) is->contents + to;
         bytes *= sizeof(int64_t);
     } else if (encoding == INTSET_ENC_INT32) {
-        src = (int32_t*)is->contents+from;
-        dst = (int32_t*)is->contents+to;
+        src = (int32_t *) is->contents + from;
+        dst = (int32_t *) is->contents + to;
         bytes *= sizeof(int32_t);
     } else {
-        src = (int16_t*)is->contents+from;
-        dst = (int16_t*)is->contents+to;
+        src = (int16_t *) is->contents + from;
+        dst = (int16_t *) is->contents + to;
         bytes *= sizeof(int16_t);
     }
 
-    // ½øĞĞÒÆ¶¯
+    // è¿›è¡Œç§»åŠ¨
     // T = O(N)
-    memmove(dst,src,bytes);
+    memmove(dst, src, bytes);
 }
 
-/* Insert an integer in the intset 
- * 
- * ³¢ÊÔ½«ÔªËØ value Ìí¼Óµ½ÕûÊı¼¯ºÏÖĞ¡£
+/* Insert an integer in the intset
  *
- * *success µÄÖµÖ¸Ê¾Ìí¼ÓÊÇ·ñ³É¹¦£º
- * - Èç¹ûÌí¼Ó³É¹¦£¬ÄÇÃ´½« *success µÄÖµÉèÎª 1 ¡£
- * - ÒòÎªÔªËØÒÑ´æÔÚ¶øÔì³ÉÌí¼ÓÊ§°ÜÊ±£¬½« *success µÄÖµÉèÎª 0 ¡£
+ * å°è¯•å°†å…ƒç´  value æ·»åŠ åˆ°æ•´æ•°é›†åˆä¸­ã€‚
+ *
+ * *success çš„å€¼æŒ‡ç¤ºæ·»åŠ æ˜¯å¦æˆåŠŸï¼š
+ * - å¦‚æœæ·»åŠ æˆåŠŸï¼Œé‚£ä¹ˆå°† *success çš„å€¼è®¾ä¸º 1 ã€‚
+ * - å› ä¸ºå…ƒç´ å·²å­˜åœ¨è€Œé€ æˆæ·»åŠ å¤±è´¥æ—¶ï¼Œå°† *success çš„å€¼è®¾ä¸º 0 ã€‚
  *
  * T = O(N)
  */
 intset *intsetAdd(intset *is, int64_t value, uint8_t *success) {
 
-    // ¼ÆËã±àÂë value ËùĞèµÄ³¤¶È
+    // è®¡ç®—ç¼–ç  value æ‰€éœ€çš„é•¿åº¦
     uint8_t valenc = _intsetValueEncoding(value);
     uint32_t pos;
 
-    // Ä¬ÈÏÉèÖÃ²åÈëÎª³É¹¦
+    // é»˜è®¤è®¾ç½®æ’å…¥ä¸ºæˆåŠŸ
     if (success) *success = 1;
 
     /* Upgrade encoding if necessary. If we need to upgrade, we know that
      * this value should be either appended (if > 0) or prepended (if < 0),
      * because it lies outside the range of existing values. */
-    // Èç¹û value µÄ±àÂë±ÈÕûÊı¼¯ºÏÏÖÔÚµÄ±àÂëÒª´ó
-    // ÄÇÃ´±íÊ¾ value ±ØÈ»¿ÉÒÔÌí¼Óµ½ÕûÊı¼¯ºÏÖĞ
-    // ²¢ÇÒÕûÊı¼¯ºÏĞèÒª¶Ô×ÔÉí½øĞĞÉı¼¶£¬²ÅÄÜÂú×ã value ËùĞèµÄ±àÂë
+    // å¦‚æœ value çš„ç¼–ç æ¯”æ•´æ•°é›†åˆç°åœ¨çš„ç¼–ç è¦å¤§
+    // é‚£ä¹ˆè¡¨ç¤º value å¿…ç„¶å¯ä»¥æ·»åŠ åˆ°æ•´æ•°é›†åˆä¸­
+    // å¹¶ä¸”æ•´æ•°é›†åˆéœ€è¦å¯¹è‡ªèº«è¿›è¡Œå‡çº§ï¼Œæ‰èƒ½æ»¡è¶³ value æ‰€éœ€çš„ç¼–ç 
     if (valenc > intrev32ifbe(is->encoding)) {
         /* This always succeeds, so we don't need to curry *success. */
         // T = O(N)
-        return intsetUpgradeAndAdd(is,value);
+        return intsetUpgradeAndAdd(is, value);
     } else {
-        // ÔËĞĞµ½ÕâÀï£¬±íÊ¾ÕûÊı¼¯ºÏÏÖÓĞµÄ±àÂë·½Ê½ÊÊÓÃÓÚ value
+        // è¿è¡Œåˆ°è¿™é‡Œï¼Œè¡¨ç¤ºæ•´æ•°é›†åˆç°æœ‰çš„ç¼–ç æ–¹å¼é€‚ç”¨äº value
 
         /* Abort if the value is already present in the set.
          * This call will populate "pos" with the right position to insert
          * the value when it cannot be found. */
-        // ÔÚÕûÊı¼¯ºÏÖĞ²éÕÒ value £¬¿´ËûÊÇ·ñ´æÔÚ£º
-        // - Èç¹û´æÔÚ£¬ÄÇÃ´½« *success ÉèÖÃÎª 0 £¬²¢·µ»ØÎ´¾­¸Ä¶¯µÄÕûÊı¼¯ºÏ
-        // - Èç¹û²»´æÔÚ£¬ÄÇÃ´¿ÉÒÔ²åÈë value µÄÎ»ÖÃ½«±»±£´æµ½ pos Ö¸ÕëÖĞ
-        //   µÈ´ıºóĞø³ÌĞòÊ¹ÓÃ
-        if (intsetSearch(is,value,&pos)) {
+        // åœ¨æ•´æ•°é›†åˆä¸­æŸ¥æ‰¾ value ï¼Œçœ‹ä»–æ˜¯å¦å­˜åœ¨ï¼š
+        // - å¦‚æœå­˜åœ¨ï¼Œé‚£ä¹ˆå°† *success è®¾ç½®ä¸º 0 ï¼Œå¹¶è¿”å›æœªç»æ”¹åŠ¨çš„æ•´æ•°é›†åˆ
+        // - å¦‚æœä¸å­˜åœ¨ï¼Œé‚£ä¹ˆå¯ä»¥æ’å…¥ value çš„ä½ç½®å°†è¢«ä¿å­˜åˆ° pos æŒ‡é’ˆä¸­
+        //   ç­‰å¾…åç»­ç¨‹åºä½¿ç”¨
+        if (intsetSearch(is, value, &pos)) {
             if (success) *success = 0;
             return is;
         }
 
-        // ÔËĞĞµ½ÕâÀï£¬±íÊ¾ value ²»´æÔÚÓÚ¼¯ºÏÖĞ
-        // ³ÌĞòĞèÒª½« value Ìí¼Óµ½ÕûÊı¼¯ºÏÖĞ
-    
-        // Îª value ÔÚ¼¯ºÏÖĞ·ÖÅä¿Õ¼ä
-        is = intsetResize(is,intrev32ifbe(is->length)+1);
-        // Èç¹ûĞÂÔªËØ²»ÊÇ±»Ìí¼Óµ½µ×²ãÊı×éµÄÄ©Î²
-        // ÄÇÃ´ĞèÒª¶ÔÏÖÓĞÔªËØµÄÊı¾İ½øĞĞÒÆ¶¯£¬¿Õ³ö pos ÉÏµÄÎ»ÖÃ£¬ÓÃÓÚÉèÖÃĞÂÖµ
-        // ¾Ù¸öÀı×Ó
-        // Èç¹ûÊı×éÎª£º
+        // è¿è¡Œåˆ°è¿™é‡Œï¼Œè¡¨ç¤º value ä¸å­˜åœ¨äºé›†åˆä¸­
+        // ç¨‹åºéœ€è¦å°† value æ·»åŠ åˆ°æ•´æ•°é›†åˆä¸­
+
+        // ä¸º value åœ¨é›†åˆä¸­åˆ†é…ç©ºé—´
+        is = intsetResize(is, intrev32ifbe(is->length) + 1);
+        // å¦‚æœæ–°å…ƒç´ ä¸æ˜¯è¢«æ·»åŠ åˆ°åº•å±‚æ•°ç»„çš„æœ«å°¾
+        // é‚£ä¹ˆéœ€è¦å¯¹ç°æœ‰å…ƒç´ çš„æ•°æ®è¿›è¡Œç§»åŠ¨ï¼Œç©ºå‡º pos ä¸Šçš„ä½ç½®ï¼Œç”¨äºè®¾ç½®æ–°å€¼
+        // ä¸¾ä¸ªä¾‹å­
+        // å¦‚æœæ•°ç»„ä¸ºï¼š
         // | x | y | z | ? |
         //     |<----->|
-        // ¶øĞÂÔªËØ n µÄ pos Îª 1 £¬ÄÇÃ´Êı×é½«ÒÆ¶¯ y ºÍ z Á½¸öÔªËØ
+        // è€Œæ–°å…ƒç´  n çš„ pos ä¸º 1 ï¼Œé‚£ä¹ˆæ•°ç»„å°†ç§»åŠ¨ y å’Œ z ä¸¤ä¸ªå…ƒç´ 
         // | x | y | y | z |
         //         |<----->|
-        // ÕâÑù¾Í¿ÉÒÔ½«ĞÂÔªËØÉèÖÃµ½ pos ÉÏÁË£º
+        // è¿™æ ·å°±å¯ä»¥å°†æ–°å…ƒç´ è®¾ç½®åˆ° pos ä¸Šäº†ï¼š
         // | x | n | y | z |
         // T = O(N)
-        if (pos < intrev32ifbe(is->length)) intsetMoveTail(is,pos,pos+1);
+        if (pos < intrev32ifbe(is->length)) intsetMoveTail(is, pos, pos + 1);
     }
 
-    // ½«ĞÂÖµÉèÖÃµ½µ×²ãÊı×éµÄÖ¸¶¨Î»ÖÃÖĞ
-    _intsetSet(is,pos,value);
+    // å°†æ–°å€¼è®¾ç½®åˆ°åº•å±‚æ•°ç»„çš„æŒ‡å®šä½ç½®ä¸­
+    _intsetSet(is, pos, value);
 
-    // ÔöÒ»¼¯ºÏÔªËØÊıÁ¿µÄ¼ÆÊıÆ÷
-    is->length = intrev32ifbe(intrev32ifbe(is->length)+1);
+    // å¢ä¸€é›†åˆå…ƒç´ æ•°é‡çš„è®¡æ•°å™¨
+    is->length = intrev32ifbe(intrev32ifbe(is->length) + 1);
 
-    // ·µ»ØÌí¼ÓĞÂÔªËØºóµÄÕûÊı¼¯ºÏ
+    // è¿”å›æ·»åŠ æ–°å…ƒç´ åçš„æ•´æ•°é›†åˆ
     return is;
 
-    /* p.s. ÉÏÃæµÄ´úÂë¿ÉÒÔÖØ¹¹³ÉÒÔÏÂ¸ü¼òµ¥µÄĞÎÊ½£º
-    
+    /* p.s. ä¸Šé¢çš„ä»£ç å¯ä»¥é‡æ„æˆä»¥ä¸‹æ›´ç®€å•çš„å½¢å¼ï¼š
+
     if (valenc > intrev32ifbe(is->encoding)) {
         return intsetUpgradeAndAdd(is,value);
     }
-     
+
     if (intsetSearch(is,value,&pos)) {
         if (success) *success = 0;
         return is;
@@ -466,134 +466,133 @@ intset *intsetAdd(intset *is, int64_t value, uint8_t *success) {
         is = intsetResize(is,intrev32ifbe(is->length)+1);
         if (pos < intrev32ifbe(is->length)) intsetMoveTail(is,pos,pos+1);
         _intsetSet(is,pos,value);
-
         is->length = intrev32ifbe(intrev32ifbe(is->length)+1);
         return is;
     }
     */
 }
 
-/* Delete integer from intset 
+/* Delete integer from intset
  *
- * ´ÓÕûÊı¼¯ºÏÖĞÉ¾³ıÖµ value ¡£
+ * ä»æ•´æ•°é›†åˆä¸­åˆ é™¤å€¼ value ã€‚
  *
- * *success µÄÖµÖ¸Ê¾É¾³ıÊÇ·ñ³É¹¦£º
- * - ÒòÖµ²»´æÔÚ¶øÔì³ÉÉ¾³ıÊ§°ÜÊ±¸ÃÖµÎª 0 ¡£
- * - É¾³ı³É¹¦Ê±¸ÃÖµÎª 1 ¡£
+ * *success çš„å€¼æŒ‡ç¤ºåˆ é™¤æ˜¯å¦æˆåŠŸï¼š
+ * - å› å€¼ä¸å­˜åœ¨è€Œé€ æˆåˆ é™¤å¤±è´¥æ—¶è¯¥å€¼ä¸º 0 ã€‚
+ * - åˆ é™¤æˆåŠŸæ—¶è¯¥å€¼ä¸º 1 ã€‚
  *
  * T = O(N)
  */
 intset *intsetRemove(intset *is, int64_t value, int *success) {
 
-    // ¼ÆËã value µÄ±àÂë·½Ê½
+    // è®¡ç®— value çš„ç¼–ç æ–¹å¼
     uint8_t valenc = _intsetValueEncoding(value);
     uint32_t pos;
 
-    // Ä¬ÈÏÉèÖÃ±êÊ¶ÖµÎªÉ¾³ıÊ§°Ü
+    // é»˜è®¤è®¾ç½®æ ‡è¯†å€¼ä¸ºåˆ é™¤å¤±è´¥
     if (success) *success = 0;
 
-    // µ± value µÄ±àÂë´óĞ¡Ğ¡ÓÚ»òµÈÓÚ¼¯ºÏµÄµ±Ç°±àÂë·½Ê½£¨ËµÃ÷ value ÓĞ¿ÉÄÜ´æÔÚÓÚ¼¯ºÏ£©
-    // ²¢ÇÒ intsetSearch µÄ½á¹ûÎªÕæ£¬ÄÇÃ´Ö´ĞĞÉ¾³ı
+    // å½“ value çš„ç¼–ç å¤§å°å°äºæˆ–ç­‰äºé›†åˆçš„å½“å‰ç¼–ç æ–¹å¼ï¼ˆè¯´æ˜ value æœ‰å¯èƒ½å­˜åœ¨äºé›†åˆï¼‰
+    // å¹¶ä¸” intsetSearch çš„ç»“æœä¸ºçœŸï¼Œé‚£ä¹ˆæ‰§è¡Œåˆ é™¤
     // T = O(log N)
-    if (valenc <= intrev32ifbe(is->encoding) && intsetSearch(is,value,&pos)) {
+    if (valenc <= intrev32ifbe(is->encoding) && intsetSearch(is, value, &pos)) {
 
-        // È¡³ö¼¯ºÏµ±Ç°µÄÔªËØÊıÁ¿
+        // å–å‡ºé›†åˆå½“å‰çš„å…ƒç´ æ•°é‡
         uint32_t len = intrev32ifbe(is->length);
 
         /* We know we can delete */
-        // ÉèÖÃ±êÊ¶ÖµÎªÉ¾³ı³É¹¦
+        // è®¾ç½®æ ‡è¯†å€¼ä¸ºåˆ é™¤æˆåŠŸ
         if (success) *success = 1;
 
         /* Overwrite value with tail and update length */
-        // Èç¹û value ²»ÊÇÎ»ÓÚÊı×éµÄÄ©Î²
-        // ÄÇÃ´ĞèÒª¶ÔÔ­±¾Î»ÓÚ value Ö®ºóµÄÔªËØ½øĞĞÒÆ¶¯
+        // å¦‚æœ value ä¸æ˜¯ä½äºæ•°ç»„çš„æœ«å°¾
+        // é‚£ä¹ˆéœ€è¦å¯¹åŸæœ¬ä½äº value ä¹‹åçš„å…ƒç´ è¿›è¡Œç§»åŠ¨
         //
-        // ¾Ù¸öÀı×Ó£¬Èç¹ûÊı×é±íÊ¾ÈçÏÂ£¬¶ø b ÎªÉ¾³ıµÄÄ¿±ê
+        // ä¸¾ä¸ªä¾‹å­ï¼Œå¦‚æœæ•°ç»„è¡¨ç¤ºå¦‚ä¸‹ï¼Œè€Œ b ä¸ºåˆ é™¤çš„ç›®æ ‡
         // | a | b | c | d |
-        // ÄÇÃ´ intsetMoveTail ½« b Ö®ºóµÄËùÓĞÊı¾İÏòÇ°ÒÆ¶¯Ò»¸öÔªËØµÄ¿Õ¼ä£¬
-        // ¸²¸Ç b Ô­À´µÄÊı¾İ
+        // é‚£ä¹ˆ intsetMoveTail å°† b ä¹‹åçš„æ‰€æœ‰æ•°æ®å‘å‰ç§»åŠ¨ä¸€ä¸ªå…ƒç´ çš„ç©ºé—´ï¼Œ
+        // è¦†ç›– b åŸæ¥çš„æ•°æ®
         // | a | c | d | d |
-        // Ö®ºó intsetResize ËõĞ¡ÄÚ´æ´óĞ¡Ê±£¬
-        // Êı×éÄ©Î²¶à³öÀ´µÄÒ»¸öÔªËØµÄ¿Õ¼ä½«±»ÒÆ³ı
+        // ä¹‹å intsetResize ç¼©å°å†…å­˜å¤§å°æ—¶ï¼Œ
+        // æ•°ç»„æœ«å°¾å¤šå‡ºæ¥çš„ä¸€ä¸ªå…ƒç´ çš„ç©ºé—´å°†è¢«ç§»é™¤
         // | a | c | d |
-        if (pos < (len-1)) intsetMoveTail(is,pos+1,pos);
-        // ËõĞ¡Êı×éµÄ´óĞ¡£¬ÒÆ³ı±»É¾³ıÔªËØÕ¼ÓÃµÄ¿Õ¼ä
+        if (pos < (len - 1)) intsetMoveTail(is, pos + 1, pos);
+        // ç¼©å°æ•°ç»„çš„å¤§å°ï¼Œç§»é™¤è¢«åˆ é™¤å…ƒç´ å ç”¨çš„ç©ºé—´
         // T = O(N)
-        is = intsetResize(is,len-1);
-        // ¸üĞÂ¼¯ºÏµÄÔªËØÊıÁ¿
-        is->length = intrev32ifbe(len-1);
+        is = intsetResize(is, len - 1);
+        // æ›´æ–°é›†åˆçš„å…ƒç´ æ•°é‡
+        is->length = intrev32ifbe(len - 1);
     }
 
     return is;
 }
 
-/* Determine whether a value belongs to this set 
+/* Determine whether a value belongs to this set
  *
- * ¼ì²é¸ø¶¨Öµ value ÊÇ·ñ¼¯ºÏÖĞµÄÔªËØ¡£
+ * æ£€æŸ¥ç»™å®šå€¼ value æ˜¯å¦é›†åˆä¸­çš„å…ƒç´ ã€‚
  *
- * ÊÇ·µ»Ø 1 £¬²»ÊÇ·µ»Ø 0 ¡£
+ * æ˜¯è¿”å› 1 ï¼Œä¸æ˜¯è¿”å› 0 ã€‚
  *
  * T = O(log N)
  */
 uint8_t intsetFind(intset *is, int64_t value) {
 
-    // ¼ÆËã value µÄ±àÂë
+    // è®¡ç®— value çš„ç¼–ç 
     uint8_t valenc = _intsetValueEncoding(value);
 
-    // Èç¹û value µÄ±àÂë´óÓÚ¼¯ºÏµÄµ±Ç°±àÂë£¬ÄÇÃ´ value Ò»¶¨²»´æÔÚÓÚ¼¯ºÏ
-    // µ± value µÄ±àÂëĞ¡ÓÚµÈÓÚ¼¯ºÏµÄµ±Ç°±àÂëÊ±£¬
-    // ²ÅÔÙÊ¹ÓÃ intsetSearch ½øĞĞ²éÕÒ
-    return valenc <= intrev32ifbe(is->encoding) && intsetSearch(is,value,NULL);
+    // å¦‚æœ value çš„ç¼–ç å¤§äºé›†åˆçš„å½“å‰ç¼–ç ï¼Œé‚£ä¹ˆ value ä¸€å®šä¸å­˜åœ¨äºé›†åˆ
+    // å½“ value çš„ç¼–ç å°äºç­‰äºé›†åˆçš„å½“å‰ç¼–ç æ—¶ï¼Œ
+    // æ‰å†ä½¿ç”¨ intsetSearch è¿›è¡ŒæŸ¥æ‰¾
+    return valenc <= intrev32ifbe(is->encoding) && intsetSearch(is, value, NULL);
 }
 
-/* Return random member 
+/* Return random member
  *
- * ´ÓÕûÊı¼¯ºÏÖĞËæ»ú·µ»ØÒ»¸öÔªËØ
+ * ä»æ•´æ•°é›†åˆä¸­éšæœºè¿”å›ä¸€ä¸ªå…ƒç´ 
  *
- * Ö»ÄÜÔÚ¼¯ºÏ·Ç¿ÕÊ±Ê¹ÓÃ
+ * åªèƒ½åœ¨é›†åˆéç©ºæ—¶ä½¿ç”¨
  *
  * T = O(1)
  */
 int64_t intsetRandom(intset *is) {
-	// È¡³ö¼¯ºÏµÄÔªËØÊıÁ¿
+    // å–å‡ºé›†åˆçš„å…ƒç´ æ•°é‡
     uint32_t len = intrev32ifbe(is->length);
     assert(len); /* avoid division by zero on corrupt intset payload. */
-	// rand() % len ¸ù¾İÔªËØÊıÁ¿¼ÆËãÒ»¸öËæ»úË÷Òı
-	// ¸ù¾İËæ»úË÷ÒıÀ´²éÕÒÖµ
-    return _intsetGet(is,rand()%len);
+    // rand() % len æ ¹æ®å…ƒç´ æ•°é‡è®¡ç®—ä¸€ä¸ªéšæœºç´¢å¼•
+    // æ ¹æ®éšæœºç´¢å¼•æ¥æŸ¥æ‰¾å€¼
+    return _intsetGet(is, rand() % len);
 }
 
 /* Get the value at the given position. When this position is
  * out of range the function returns 0, when in range it returns 1. */
-/* 
- * È¡³ö¼¯ºÏµ×²ãÊı×éÖ¸¶¨Î»ÖÃÖĞµÄÖµ£¬²¢½«Ëü±£´æµ½ value Ö¸ÕëÖĞ¡£
+/*
+ * å–å‡ºé›†åˆåº•å±‚æ•°ç»„æŒ‡å®šä½ç½®ä¸­çš„å€¼ï¼Œå¹¶å°†å®ƒä¿å­˜åˆ° value æŒ‡é’ˆä¸­ã€‚
  *
- * Èç¹û pos Ã»³¬³öÊı×éµÄË÷Òı·¶Î§£¬ÄÇÃ´·µ»Ø 1 £¬Èç¹û³¬³öË÷Òı£¬ÄÇÃ´·µ»Ø 0 ¡£
+ * å¦‚æœ pos æ²¡è¶…å‡ºæ•°ç»„çš„ç´¢å¼•èŒƒå›´ï¼Œé‚£ä¹ˆè¿”å› 1 ï¼Œå¦‚æœè¶…å‡ºç´¢å¼•ï¼Œé‚£ä¹ˆè¿”å› 0 ã€‚
  *
- * p.s. ÉÏÃæÔ­ÎÄµÄÎÄµµËµÕâ¸öº¯ÊıÓÃÓÚÉèÖÃÖµ£¬ÕâÊÇ´íÎóµÄ¡£
+ * p.s. ä¸Šé¢åŸæ–‡çš„æ–‡æ¡£è¯´è¿™ä¸ªå‡½æ•°ç”¨äºè®¾ç½®å€¼ï¼Œè¿™æ˜¯é”™è¯¯çš„ã€‚
  *
  * T = O(1)
  */
 uint8_t intsetGet(intset *is, uint32_t pos, int64_t *value) {
 
-    // pos < intrev32ifbe(is->length) 
-    // ¼ì²é pos ÊÇ·ñ·ûºÏÊı×éµÄ·¶Î§
+    // pos < intrev32ifbe(is->length)
+    // æ£€æŸ¥ pos æ˜¯å¦ç¬¦åˆæ•°ç»„çš„èŒƒå›´
     if (pos < intrev32ifbe(is->length)) {
 
-        // ±£´æÖµµ½Ö¸Õë
-        *value = _intsetGet(is,pos);
+        // ä¿å­˜å€¼åˆ°æŒ‡é’ˆ
+        *value = _intsetGet(is, pos);
 
-        // ·µ»Ø³É¹¦Ö¸Ê¾Öµ
+        // è¿”å›æˆåŠŸæŒ‡ç¤ºå€¼
         return 1;
     }
 
-    // ³¬³öË÷Òı·¶Î§
+    // è¶…å‡ºç´¢å¼•èŒƒå›´
     return 0;
 }
 
-/* Return intset length 
+/* Return intset length
  *
- * ·µ»ØÕûÊı¼¯ºÏÏÖÓĞµÄÔªËØ¸öÊı
+ * è¿”å›æ•´æ•°é›†åˆç°æœ‰çš„å…ƒç´ ä¸ªæ•°
  *
  * T = O(1)
  */
@@ -601,22 +600,22 @@ uint32_t intsetLen(const intset *is) {
     return intrev32ifbe(is->length);
 }
 
-/* Return intset blob size in bytes. 
+/* Return intset blob size in bytes.
  *
- * ·µ»ØÕûÊı¼¯ºÏÏÖÔÚÕ¼ÓÃµÄ×Ö½Ú×ÜÊıÁ¿
- * Õâ¸öÊıÁ¿°üÀ¨ÕûÊı¼¯ºÏµÄ½á¹¹´óĞ¡£¬ÒÔ¼°ÕûÊı¼¯ºÏËùÓĞÔªËØµÄ×Ü´óĞ¡
+ * è¿”å›æ•´æ•°é›†åˆç°åœ¨å ç”¨çš„å­—èŠ‚æ€»æ•°é‡
+ * è¿™ä¸ªæ•°é‡åŒ…æ‹¬æ•´æ•°é›†åˆçš„ç»“æ„å¤§å°ï¼Œä»¥åŠæ•´æ•°é›†åˆæ‰€æœ‰å…ƒç´ çš„æ€»å¤§å°
  *
  * T = O(1)
  */
 size_t intsetBlobLen(intset *is) {
-    return sizeof(intset)+(size_t)intrev32ifbe(is->length)*intrev32ifbe(is->encoding);
+    return sizeof(intset) + (size_t) intrev32ifbe(is->length) * intrev32ifbe(is->encoding);
 }
 
 /* Validate the integrity of the data structure.
  * when `deep` is 0, only the integrity of the header is validated.
  * when `deep` is 1, we make sure there are no duplicate or out of order records. */
 int intsetValidateIntegrity(const unsigned char *p, size_t size, int deep) {
-    intset *is = (intset *)p;
+    intset *is = (intset *) p;
     /* check that we can actually read the header. */
     if (size < sizeof(*is))
         return 0;
@@ -628,7 +627,7 @@ int intsetValidateIntegrity(const unsigned char *p, size_t size, int deep) {
         record_size = INTSET_ENC_INT64;
     } else if (encoding == INTSET_ENC_INT32) {
         record_size = INTSET_ENC_INT32;
-    } else if (encoding == INTSET_ENC_INT16){
+    } else if (encoding == INTSET_ENC_INT16) {
         record_size = INTSET_ENC_INT16;
     } else {
         return 0;
@@ -636,20 +635,20 @@ int intsetValidateIntegrity(const unsigned char *p, size_t size, int deep) {
 
     /* check that the size matchies (all records are inside the buffer). */
     uint32_t count = intrev32ifbe(is->length);
-    if (sizeof(*is) + count*record_size != size)
+    if (sizeof(*is) + count * record_size != size)
         return 0;
 
     /* check that the set is not empty. */
-    if (count==0)
+    if (count == 0)
         return 0;
 
     if (!deep)
         return 1;
 
     /* check that there are no dup or out of order records. */
-    int64_t prev = _intsetGet(is,0);
-    for (uint32_t i=1; i<count; i++) {
-        int64_t cur = _intsetGet(is,i);
+    int64_t prev = _intsetGet(is, 0);
+    for (uint32_t i = 1; i < count; i++) {
+        int64_t cur = _intsetGet(is, i);
         if (cur <= prev)
             return 0;
         prev = cur;
@@ -740,9 +739,9 @@ int intsetTest(int argc, char **argv, int accurate) {
         assert(_intsetValueEncoding(-2147483649) == INTSET_ENC_INT64);
         assert(_intsetValueEncoding(+2147483648) == INTSET_ENC_INT64);
         assert(_intsetValueEncoding(-9223372036854775808ull) ==
-                    INTSET_ENC_INT64);
+        INTSET_ENC_INT64);
         assert(_intsetValueEncoding(+9223372036854775807ull) ==
-                    INTSET_ENC_INT64);
+        INTSET_ENC_INT64);
         ok();
     }
 

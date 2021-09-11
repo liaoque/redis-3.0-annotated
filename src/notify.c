@@ -35,34 +35,63 @@
 /* Turn a string representing notification classes into an integer
  * representing notification classes flags xored.
  *
- * ¶Ô´«ÈëµÄ×Ö·û´®²ÎÊı½øĞĞ·ÖÎö£¬ ¸ø³öÏàÓ¦µÄ flags Öµ
+ * å¯¹ä¼ å…¥çš„å­—ç¬¦ä¸²å‚æ•°è¿›è¡Œåˆ†æï¼Œ ç»™å‡ºç›¸åº”çš„ flags å€¼
  *
  * The function returns -1 if the input contains characters not mapping to
- * any class. */
- *
- * Èç¹û´«ÈëµÄ×Ö·û´®ÖĞÓĞ²»ÄÜÊ¶±ğµÄ×Ö·û´®£¬ÄÇÃ´·µ»Ø -1 ¡£
- */
+ * any class.
+*
+* å¦‚æœä¼ å…¥çš„å­—ç¬¦ä¸²ä¸­æœ‰ä¸èƒ½è¯†åˆ«çš„å­—ç¬¦ä¸²ï¼Œé‚£ä¹ˆè¿”å› -1 ã€‚
+*/
 int keyspaceEventsStringToFlags(char *classes) {
     char *p = classes;
     int c, flags = 0;
 
-    while((c = *p++) != '\0') {
-        switch(c) {
-        case 'A': flags |= NOTIFY_ALL; break;
-        case 'g': flags |= NOTIFY_GENERIC; break;
-        case '$': flags |= NOTIFY_STRING; break;
-        case 'l': flags |= NOTIFY_LIST; break;
-        case 's': flags |= NOTIFY_SET; break;
-        case 'h': flags |= NOTIFY_HASH; break;
-        case 'z': flags |= NOTIFY_ZSET; break;
-        case 'x': flags |= NOTIFY_EXPIRED; break;
-        case 'e': flags |= NOTIFY_EVICTED; break;
-        case 'K': flags |= NOTIFY_KEYSPACE; break;
-        case 'E': flags |= NOTIFY_KEYEVENT; break;
-        case 't': flags |= NOTIFY_STREAM; break;
-        case 'm': flags |= NOTIFY_KEY_MISS; break;
-        case 'd': flags |= NOTIFY_MODULE; break;
-        default: return -1;
+    while ((c = *p++) != '\0') {
+        switch (c) {
+            case 'A':
+                flags |= NOTIFY_ALL;
+                break;
+            case 'g':
+                flags |= NOTIFY_GENERIC;
+                break;
+            case '$':
+                flags |= NOTIFY_STRING;
+                break;
+            case 'l':
+                flags |= NOTIFY_LIST;
+                break;
+            case 's':
+                flags |= NOTIFY_SET;
+                break;
+            case 'h':
+                flags |= NOTIFY_HASH;
+                break;
+            case 'z':
+                flags |= NOTIFY_ZSET;
+                break;
+            case 'x':
+                flags |= NOTIFY_EXPIRED;
+                break;
+            case 'e':
+                flags |= NOTIFY_EVICTED;
+                break;
+            case 'K':
+                flags |= NOTIFY_KEYSPACE;
+                break;
+            case 'E':
+                flags |= NOTIFY_KEYEVENT;
+                break;
+            case 't':
+                flags |= NOTIFY_STREAM;
+                break;
+            case 'm':
+                flags |= NOTIFY_KEY_MISS;
+                break;
+            case 'd':
+                flags |= NOTIFY_MODULE;
+                break;
+            default:
+                return -1;
         }
     }
     return flags;
@@ -73,29 +102,29 @@ int keyspaceEventsStringToFlags(char *classes) {
  * the selected classes. The string returned is an sds string that needs to
  * be released with sdsfree(). */
 /*
- * ¸ù¾İ flags Öµ»¹Ô­ÉèÖÃÕâ¸ö flags ËùĞèµÄ×Ö·û´®
+ * æ ¹æ® flags å€¼è¿˜åŸè®¾ç½®è¿™ä¸ª flags æ‰€éœ€çš„å­—ç¬¦ä¸²
  */
 sds keyspaceEventsFlagsToString(int flags) {
     sds res;
 
     res = sdsempty();
     if ((flags & NOTIFY_ALL) == NOTIFY_ALL) {
-        res = sdscatlen(res,"A",1);
+        res = sdscatlen(res, "A", 1);
     } else {
-        if (flags & NOTIFY_GENERIC) res = sdscatlen(res,"g",1);
-        if (flags & NOTIFY_STRING) res = sdscatlen(res,"$",1);
-        if (flags & NOTIFY_LIST) res = sdscatlen(res,"l",1);
-        if (flags & NOTIFY_SET) res = sdscatlen(res,"s",1);
-        if (flags & NOTIFY_HASH) res = sdscatlen(res,"h",1);
-        if (flags & NOTIFY_ZSET) res = sdscatlen(res,"z",1);
-        if (flags & NOTIFY_EXPIRED) res = sdscatlen(res,"x",1);
-        if (flags & NOTIFY_EVICTED) res = sdscatlen(res,"e",1);
-        if (flags & NOTIFY_STREAM) res = sdscatlen(res,"t",1);
-        if (flags & NOTIFY_MODULE) res = sdscatlen(res,"d",1);
+        if (flags & NOTIFY_GENERIC) res = sdscatlen(res, "g", 1);
+        if (flags & NOTIFY_STRING) res = sdscatlen(res, "$", 1);
+        if (flags & NOTIFY_LIST) res = sdscatlen(res, "l", 1);
+        if (flags & NOTIFY_SET) res = sdscatlen(res, "s", 1);
+        if (flags & NOTIFY_HASH) res = sdscatlen(res, "h", 1);
+        if (flags & NOTIFY_ZSET) res = sdscatlen(res, "z", 1);
+        if (flags & NOTIFY_EXPIRED) res = sdscatlen(res, "x", 1);
+        if (flags & NOTIFY_EVICTED) res = sdscatlen(res, "e", 1);
+        if (flags & NOTIFY_STREAM) res = sdscatlen(res, "t", 1);
+        if (flags & NOTIFY_MODULE) res = sdscatlen(res, "d", 1);
     }
-    if (flags & NOTIFY_KEYSPACE) res = sdscatlen(res,"K",1);
-    if (flags & NOTIFY_KEYEVENT) res = sdscatlen(res,"E",1);
-    if (flags & NOTIFY_KEY_MISS) res = sdscatlen(res,"m",1);
+    if (flags & NOTIFY_KEYSPACE) res = sdscatlen(res, "K", 1);
+    if (flags & NOTIFY_KEYEVENT) res = sdscatlen(res, "E", 1);
+    if (flags & NOTIFY_KEY_MISS) res = sdscatlen(res, "m", 1);
     return res;
 }
 
@@ -105,15 +134,15 @@ sds keyspaceEventsFlagsToString(int flags) {
  *
  * 'event' is a C string representing the event name.
  *
- * event ²ÎÊıÊÇÒ»¸ö×Ö·û´®±íÊ¾µÄÊÂ¼şÃû
+ * event å‚æ•°æ˜¯ä¸€ä¸ªå­—ç¬¦ä¸²è¡¨ç¤ºçš„äº‹ä»¶å
  *
  * 'key' is a Redis object representing the key name.
  *
- * key ²ÎÊıÊÇÒ»¸ö Redis ¶ÔÏó±íÊ¾µÄ¼üÃû
+ * key å‚æ•°æ˜¯ä¸€ä¸ª Redis å¯¹è±¡è¡¨ç¤ºçš„é”®å
  *
- * 'dbid' is the database ID where the key lives.  
+ * 'dbid' is the database ID where the key lives.
  *
- * dbid ²ÎÊıÎª¼üËùÔÚµÄÊı¾İ¿â
+ * dbid å‚æ•°ä¸ºé”®æ‰€åœ¨çš„æ•°æ®åº“
  */
 void notifyKeyspaceEvent(int type, char *event, robj *key, int dbid) {
     sds chan;
@@ -125,47 +154,48 @@ void notifyKeyspaceEvent(int type, char *event, robj *key, int dbid) {
      * This bypasses the notifications configuration, but the module engine
      * will only call event subscribers if the event type matches the types
      * they are interested in. */
-     moduleNotifyKeyspaceEvent(type, event, key, dbid);
+    moduleNotifyKeyspaceEvent(type, event, key, dbid);
 
     /* If notifications for this class of events are off, return ASAP. */
-    // Èç¹û·şÎñÆ÷ÅäÖÃÎª²»·¢ËÍ type ÀàĞÍµÄÍ¨Öª£¬ÄÇÃ´Ö±½Ó·µ»Ø
+    // å¦‚æœæœåŠ¡å™¨é…ç½®ä¸ºä¸å‘é€ type ç±»å‹çš„é€šçŸ¥ï¼Œé‚£ä¹ˆç›´æ¥è¿”å›
     if (!(server.notify_keyspace_events & type)) return;
 
-    // ÊÂ¼şµÄÃû×Ö
-    eventobj = createStringObject(event,strlen(event));
+    // äº‹ä»¶çš„åå­—
+    eventobj = createStringObject(event, strlen(event));
 
     /* __keyspace@<db>__:<key> <event> notifications. */
-    // ·¢ËÍ¼ü¿Õ¼äÍ¨Öª
-        // ¹¹½¨ÆµµÀ¶ÔÏó
-        chan = sdsnewlen("__keyspace@",11);
-        len = ll2string(buf,sizeof(buf),dbid);
+    // å‘é€é”®ç©ºé—´é€šçŸ¥
+    // æ„å»ºé¢‘é“å¯¹è±¡
+    if (server.notify_keyspace_events & NOTIFY_KEYSPACE) {
+        chan = sdsnewlen("__keyspace@", 11);
+        len = ll2string(buf, sizeof(buf), dbid);
         chan = sdscatlen(chan, buf, len);
         chan = sdscatlen(chan, "__:", 3);
         chan = sdscatsds(chan, key->ptr);
         chanobj = createObject(OBJ_STRING, chan);
-        // Í¨¹ı publish ÃüÁî·¢ËÍÍ¨Öª
+        // é€šè¿‡ publish å‘½ä»¤å‘é€é€šçŸ¥
         pubsubPublishMessage(chanobj, eventobj);
-        // ÊÍ·ÅÆµµÀ¶ÔÏó
+        // é‡Šæ”¾é¢‘é“å¯¹è±¡
         decrRefCount(chanobj);
     }
 
-    /* __keyevent@<db>__:<event> <key> notifications. */
-    // ·¢ËÍ¼üÊÂ¼şÍ¨Öª
+/* __keyevent@<db>__:<event> <key> notifications. */
+// å‘é€é”®äº‹ä»¶é€šçŸ¥
     if (server.notify_keyspace_events & NOTIFY_KEYEVENT) {
-        // ¹¹½¨ÆµµÀ¶ÔÏó
-        chan = sdsnewlen("__keyevent@",11);
-        // Èç¹ûÔÚÇ°Ãæ·¢ËÍ¼ü¿Õ¼äÍ¨ÖªµÄÊ±ºò¼ÆËãÁË len £¬ÄÇÃ´Ëü¾Í²»»áÊÇ -1
-        // Õâ¿ÉÒÔ±ÜÃâ¼ÆËãÁ½´Î buf µÄ³¤¶È
-        if (len == -1) len = ll2string(buf,sizeof(buf),dbid);
+        // æ„å»ºé¢‘é“å¯¹è±¡
+        chan = sdsnewlen("__keyevent@", 11);
+        // å¦‚æœåœ¨å‰é¢å‘é€é”®ç©ºé—´é€šçŸ¥çš„æ—¶å€™è®¡ç®—äº† len ï¼Œé‚£ä¹ˆå®ƒå°±ä¸ä¼šæ˜¯ -1
+        // è¿™å¯ä»¥é¿å…è®¡ç®—ä¸¤æ¬¡ buf çš„é•¿åº¦
+        if (len == -1) len = ll2string(buf, sizeof(buf), dbid);
         chan = sdscatlen(chan, buf, len);
         chan = sdscatlen(chan, "__:", 3);
         chan = sdscatsds(chan, eventobj->ptr);
         chanobj = createObject(OBJ_STRING, chan);
-        // Í¨¹ı publish ÃüÁî·¢ËÍÍ¨Öª
+        // é€šè¿‡ publish å‘½ä»¤å‘é€é€šçŸ¥
         pubsubPublishMessage(chanobj, key);
-        // ÊÍ·ÅÆµµÀ¶ÔÏó
+        // é‡Šæ”¾é¢‘é“å¯¹è±¡
         decrRefCount(chanobj);
     }
-    // ÊÍ·ÅÊÂ¼ş¶ÔÏó
+// é‡Šæ”¾äº‹ä»¶å¯¹è±¡
     decrRefCount(eventobj);
 }

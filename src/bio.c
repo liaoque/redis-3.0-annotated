@@ -1,20 +1,20 @@
 /* Background I/O service for Redis.
  *
- * Redis µÄºóÌ¨ I/O ·şÎñ
+ * Redis çš„åå° I/O æœåŠ¡
  * This file implements operations that we need to perform in the background.
- * bio ÊµÏÖÁË½«¹¤×÷·ÅÔÚºóÌ¨Ö´ĞĞµÄ¹¦ÄÜ¡£
+ * bio å®ç°äº†å°†å·¥ä½œæ”¾åœ¨åå°æ‰§è¡Œçš„åŠŸèƒ½ã€‚
  * Currently there is only a single operation, that is a background close(2)
  * system call. This is needed as when the process is the last owner of a
  * reference to a file closing it means unlinking it, and the deletion of the
  * file is slow, blocking the server.
  *
- * Ä¿Ç°ÔÚºóÌ¨Ö´ĞĞµÄÖ»ÓĞ close(2) ²Ù×÷£º
- * ÒòÎªµ±·şÎñÆ÷ÊÇÄ³¸öÎÄ¼şµÄ×îºóÒ»¸öÓµÓĞÕßÊ±£¬
- * ¹Ø±ÕÒ»¸öÎÄ¼ş´ú±í unlinking Ëü£¬
- * ²¢ÇÒÉ¾³ıÎÄ¼ş·Ç³£Âı£¬»á×èÈûÏµÍ³£¬
- * ËùÒÔÎÒÃÇ½« close(2) ·Åµ½ºóÌ¨½øĞĞ¡£
+ * ç›®å‰åœ¨åå°æ‰§è¡Œçš„åªæœ‰ close(2) æ“ä½œï¼š
+ * å› ä¸ºå½“æœåŠ¡å™¨æ˜¯æŸä¸ªæ–‡ä»¶çš„æœ€åä¸€ä¸ªæ‹¥æœ‰è€…æ—¶ï¼Œ
+ * å…³é—­ä¸€ä¸ªæ–‡ä»¶ä»£è¡¨ unlinking å®ƒï¼Œ
+ * å¹¶ä¸”åˆ é™¤æ–‡ä»¶éå¸¸æ…¢ï¼Œä¼šé˜»å¡ç³»ç»Ÿï¼Œ
+ * æ‰€ä»¥æˆ‘ä»¬å°† close(2) æ”¾åˆ°åå°è¿›è¡Œã€‚
  *
- * (Òë×¢£ºÏÖÔÚ²»Ö¹ close(2) £¬Á¬ AOF ÎÄ¼şµÄ fsync Ò²ÊÇ·Åµ½ºóÌ¨Ö´ĞĞµÄ£©
+ * (è¯‘æ³¨ï¼šç°åœ¨ä¸æ­¢ close(2) ï¼Œè¿ AOF æ–‡ä»¶çš„ fsync ä¹Ÿæ˜¯æ”¾åˆ°åå°æ‰§è¡Œçš„ï¼‰
  *
  * In the future we'll either continue implementing new things we need or
  * we'll switch to libeio. However there are probably long term uses for this
@@ -22,9 +22,9 @@
  * it is not impossible that we'll need a non blocking FLUSHDB/FLUSHALL
  * implementation).
  *
- * Õâ¸öºóÌ¨·şÎñ½«À´¿ÉÄÜ»áÔö¼Ó¸ü¶à¹¦ÄÜ£¬»òÕßÇĞ»»µ½ libeio ÉÏÃæÈ¥¡£
- * ²»¹ıÎÒÃÇ¿ÉÄÜ»á³¤ÆÚÊ¹ÓÃÕâ¸öÎÄ¼ş£¬ÒÔ±ãÖ§³ÖÒ»Ğ© Redis ËùÌØÓĞµÄºóÌ¨²Ù×÷¡£
- * ±ÈÈçËµ£¬½«À´ÎÒÃÇ¿ÉÄÜĞèÒªÒ»¸ö·Ç×èÈûµÄ FLUSHDB »òÕß FLUSHALL Ò²Ëµ²»¶¨¡£
+ * è¿™ä¸ªåå°æœåŠ¡å°†æ¥å¯èƒ½ä¼šå¢åŠ æ›´å¤šåŠŸèƒ½ï¼Œæˆ–è€…åˆ‡æ¢åˆ° libeio ä¸Šé¢å»ã€‚
+ * ä¸è¿‡æˆ‘ä»¬å¯èƒ½ä¼šé•¿æœŸä½¿ç”¨è¿™ä¸ªæ–‡ä»¶ï¼Œä»¥ä¾¿æ”¯æŒä¸€äº› Redis æ‰€ç‰¹æœ‰çš„åå°æ“ä½œã€‚
+ * æ¯”å¦‚è¯´ï¼Œå°†æ¥æˆ‘ä»¬å¯èƒ½éœ€è¦ä¸€ä¸ªéé˜»å¡çš„ FLUSHDB æˆ–è€… FLUSHALL ä¹Ÿè¯´ä¸å®šã€‚
  *
  * DESIGN
  * ------
@@ -34,20 +34,20 @@
  * Every thread waits for new jobs in its queue, and process every job
  * sequentially.
  *
- * Éè¼ÆºÜ¼òµ¥£º
- * ÓÃÒ»¸ö½á¹¹±íÊ¾ÒªÖ´ĞĞµÄ¹¤×÷£¬¶øÃ¿¸öÀàĞÍµÄ¹¤×÷ÓĞÒ»¸ö¶ÓÁĞºÍÏß³Ì£¬
- * Ã¿¸öÏß³Ì¶¼Ë³ĞòµØÖ´ĞĞ¶ÓÁĞÖĞµÄ¹¤×÷¡£
+ * è®¾è®¡å¾ˆç®€å•ï¼š
+ * ç”¨ä¸€ä¸ªç»“æ„è¡¨ç¤ºè¦æ‰§è¡Œçš„å·¥ä½œï¼Œè€Œæ¯ä¸ªç±»å‹çš„å·¥ä½œæœ‰ä¸€ä¸ªé˜Ÿåˆ—å’Œçº¿ç¨‹ï¼Œ
+ * æ¯ä¸ªçº¿ç¨‹éƒ½é¡ºåºåœ°æ‰§è¡Œé˜Ÿåˆ—ä¸­çš„å·¥ä½œã€‚
  *
  * Jobs of the same type are guaranteed to be processed from the least
  * recently inserted to the most recently inserted (older jobs processed
  * first).
  *
- * Í¬Ò»ÀàĞÍµÄ¹¤×÷°´ FIFO µÄË³ĞòÖ´ĞĞ¡£
+ * åŒä¸€ç±»å‹çš„å·¥ä½œæŒ‰ FIFO çš„é¡ºåºæ‰§è¡Œã€‚
  *
  * Currently there is no way for the creator of the job to be notified about
  * the completion of the operation, this will only be added when/if needed.
  *
- * Ä¿Ç°»¹Ã»ÓĞ°ì·¨ÔÚÈÎÎñÍê³ÉÊ±Í¨ÖªÖ´ĞĞÕß£¬ÔÚÓĞĞèÒªµÄÊ±ºò£¬»áÊµÏÖÕâ¸ö¹¦ÄÜ¡£
+ * ç›®å‰è¿˜æ²¡æœ‰åŠæ³•åœ¨ä»»åŠ¡å®Œæˆæ—¶é€šçŸ¥æ‰§è¡Œè€…ï¼Œåœ¨æœ‰éœ€è¦çš„æ—¶å€™ï¼Œä¼šå®ç°è¿™ä¸ªåŠŸèƒ½ã€‚
  *
  * ----------------------------------------------------------------------------
  *
@@ -83,13 +83,13 @@
 #include "server.h"
 #include "bio.h"
 
-// ¹¤×÷Ïß³Ì£¬³â»¥ºÍÌõ¼ş±äÁ¿
+// å·¥ä½œçº¿ç¨‹ï¼Œæ–¥äº’å’Œæ¡ä»¶å˜é‡
 static pthread_t bio_threads[BIO_NUM_OPS];
 static pthread_mutex_t bio_mutex[BIO_NUM_OPS];
 static pthread_cond_t bio_newjob_cond[BIO_NUM_OPS];
 static pthread_cond_t bio_step_cond[BIO_NUM_OPS];
 
-// ´æ·Å¹¤×÷µÄ¶ÓÁĞ
+// å­˜æ”¾å·¥ä½œçš„é˜Ÿåˆ—
 static list *bio_jobs[BIO_NUM_OPS];
 /* The following array is used to hold the number of pending jobs for every
  * OP type. This allows us to export the bioPendingJobsOfType() API that is
@@ -97,38 +97,38 @@ static list *bio_jobs[BIO_NUM_OPS];
  * objects shared with the background thread. The main thread will just wait
  * that there are no longer jobs of this type to be executed before performing
  * the sensible operation. This data is also useful for reporting. */
-// ¼ÇÂ¼Ã¿ÖÖÀàĞÍ job ¶ÓÁĞÀïÓĞ¶àÉÙ job µÈ´ıÖ´ĞĞ
+// è®°å½•æ¯ç§ç±»å‹ job é˜Ÿåˆ—é‡Œæœ‰å¤šå°‘ job ç­‰å¾…æ‰§è¡Œ
 static unsigned long long bio_pending[BIO_NUM_OPS];
 
 /* This structure represents a background Job. It is only used locally to this
  * file as the API deos not expose the internals at all.
  *
- * ±íÊ¾ºóÌ¨ÈÎÎñµÄÊı¾İ½á¹¹
+ * è¡¨ç¤ºåå°ä»»åŠ¡çš„æ•°æ®ç»“æ„
  *
- * Õâ¸ö½á¹¹Ö»ÓÉ API Ê¹ÓÃ£¬²»»á±»±©Â¶¸øÍâ²¿¡£
+ * è¿™ä¸ªç»“æ„åªç”± API ä½¿ç”¨ï¼Œä¸ä¼šè¢«æš´éœ²ç»™å¤–éƒ¨ã€‚
  */
 struct bio_job {
-    // ÈÎÎñ´´½¨Ê±µÄÊ±¼ä
+    // ä»»åŠ¡åˆ›å»ºæ—¶çš„æ—¶é—´
     time_t time; /* Time at which the job was created. */
     /* Job specific arguments.*/
     int fd; /* Fd for file based background jobs */
     lazy_free_fn *free_fn; /* Function that will free the provided arguments */
-	//ÈÎÎñµÄ²ÎÊı
+    //ä»»åŠ¡çš„å‚æ•°
     void *free_args[]; /* List of arguments to be passed to the free function */
 };
 
 void *bioProcessBackgroundJobs(void *arg);
 
 /* Make sure we have enough stack to perform all the things we do in the
- * main thread. 
+ * main thread.
  *
- * ×ÓÏß³ÌÕ»´óĞ¡
+ * å­çº¿ç¨‹æ ˆå¤§å°
  */
 #define REDIS_THREAD_STACK_SIZE (1024*1024*4)
 
-/* Initialize the background system, spawning the thread. 
+/* Initialize the background system, spawning the thread.
  *
- * ³õÊ¼»¯ºóÌ¨ÈÎÎñÏµÍ³£¬Éú³ÉÏß³Ì
+ * åˆå§‹åŒ–åå°ä»»åŠ¡ç³»ç»Ÿï¼Œç”Ÿæˆçº¿ç¨‹
  */
 void bioInit(void) {
     pthread_attr_t attr;
@@ -137,7 +137,7 @@ void bioInit(void) {
     int j;
 
     /* Initialization of state vars and objects */
-	// ³õÊ¼»¯ job ¶ÓÁĞ£¬ÒÔ¼°Ïß³Ì×´Ì¬
+    // åˆå§‹åŒ– job é˜Ÿåˆ—ï¼Œä»¥åŠçº¿ç¨‹çŠ¶æ€
     for (j = 0; j < BIO_NUM_OPS; j++) {
         pthread_mutex_init(&bio_mutex[j],NULL);
         pthread_cond_init(&bio_newjob_cond[j],NULL);
@@ -146,9 +146,9 @@ void bioInit(void) {
         bio_pending[j] = 0;
     }
 
-    /* Set the stack size as by default it may be small in some system 
+    /* Set the stack size as by default it may be small in some system
      *
-     * ÉèÖÃÕ»´óĞ¡
+     * è®¾ç½®æ ˆå¤§å°
      */
     pthread_attr_init(&attr);
     pthread_attr_getstacksize(&attr,&stacksize);
@@ -158,9 +158,9 @@ void bioInit(void) {
 
     /* Ready to spawn our threads. We use the single argument the thread
      * function accepts in order to pass the job ID the thread is
-     * responsible of. 
+     * responsible of.
      *
-     * ´´½¨Ïß³Ì
+     * åˆ›å»ºçº¿ç¨‹
      */
     for (j = 0; j < BIO_NUM_OPS; j++) {
         void *arg = (void*)(unsigned long) j;
@@ -172,12 +172,12 @@ void bioInit(void) {
     }
 }
 /*
- * ´´½¨ºóÌ¨ÈÎÎñ
+ * åˆ›å»ºåå°ä»»åŠ¡
  */
 void bioSubmitJob(int type, struct bio_job *job) {
     job->time = time(NULL);
     pthread_mutex_lock(&bio_mutex[type]);
-    // ½«ĞÂ¹¤×÷ÍÆÈë¶ÓÁĞ
+    // å°†æ–°å·¥ä½œæ¨å…¥é˜Ÿåˆ—
     listAddNodeTail(bio_jobs[type],job);
     bio_pending[type]++;
     pthread_cond_signal(&bio_newjob_cond[type]);
@@ -199,7 +199,7 @@ void bioCreateLazyFreeJob(lazy_free_fn free_fn, int arg_count, ...) {
     bioSubmitJob(BIO_LAZY_FREE, job);
 }
 /*
- * ´¦ÀíºóÌ¨ÈÎÎñ
+ * å¤„ç†åå°ä»»åŠ¡
  */
 void bioCreateCloseJob(int fd) {
     struct bio_job *job = zmalloc(sizeof(*job));
@@ -223,20 +223,20 @@ void *bioProcessBackgroundJobs(void *arg) {
     /* Check that the type is within the right interval. */
     if (type >= BIO_NUM_OPS) {
         serverLog(LL_WARNING,
-            "Warning: bio thread started with wrong type %lu",type);
+                  "Warning: bio thread started with wrong type %lu",type);
         return NULL;
     }
 
     switch (type) {
-    case BIO_CLOSE_FILE:
-        redis_set_thread_title("bio_close_file");
-        break;
-    case BIO_AOF_FSYNC:
-        redis_set_thread_title("bio_aof_fsync");
-        break;
-    case BIO_LAZY_FREE:
-        redis_set_thread_title("bio_lazy_free");
-        break;
+        case BIO_CLOSE_FILE:
+            redis_set_thread_title("bio_close_file");
+            break;
+            case BIO_AOF_FSYNC:
+                redis_set_thread_title("bio_aof_fsync");
+                break;
+                case BIO_LAZY_FREE:
+                    redis_set_thread_title("bio_lazy_free");
+                    break;
     }
 
     redisSetCpuAffinity(server.bio_cpulist);
@@ -250,7 +250,7 @@ void *bioProcessBackgroundJobs(void *arg) {
     sigaddset(&sigset, SIGALRM);
     if (pthread_sigmask(SIG_BLOCK, &sigset, NULL))
         serverLog(LL_WARNING,
-            "Warning: can't mask SIGALRM in bio.c thread: %s", strerror(errno));
+                  "Warning: can't mask SIGALRM in bio.c thread: %s", strerror(errno));
 
     while(1) {
         listNode *ln;
@@ -261,9 +261,9 @@ void *bioProcessBackgroundJobs(void *arg) {
             continue;
         }
         /* Pop the job from the queue. */
-        /* Pop the job from the queue. 
+        /* Pop the job from the queue.
          *
-         * È¡³ö£¨µ«²»É¾³ı£©¶ÓÁĞÖĞµÄÊ×¸öÈÎÎñ
+         * å–å‡ºï¼ˆä½†ä¸åˆ é™¤ï¼‰é˜Ÿåˆ—ä¸­çš„é¦–ä¸ªä»»åŠ¡
          */
         ln = listFirst(bio_jobs[type]);
         job = ln->value;
@@ -272,7 +272,7 @@ void *bioProcessBackgroundJobs(void *arg) {
         pthread_mutex_unlock(&bio_mutex[type]);
 
         /* Process the job accordingly to its type. */
-        // Ö´ĞĞÈÎÎñ
+        // æ‰§è¡Œä»»åŠ¡
         if (type == BIO_CLOSE_FILE) {
             close(job->fd);
         } else if (type == BIO_AOF_FSYNC) {
@@ -280,7 +280,7 @@ void *bioProcessBackgroundJobs(void *arg) {
              * socket, pipe, or file. We just ignore these errno because
              * aof fsync did not really fail. */
             if (redis_fsync(job->fd) == -1 &&
-                errno != EBADF && errno != EINVAL)
+            errno != EBADF && errno != EINVAL)
             {
                 int last_status;
                 atomicGet(server.aof_bio_fsync_status,last_status);
@@ -288,7 +288,7 @@ void *bioProcessBackgroundJobs(void *arg) {
                 atomicSet(server.aof_bio_fsync_errno,errno);
                 if (last_status == C_OK) {
                     serverLog(LL_WARNING,
-                        "Fail to fsync the AOF file: %s",strerror(errno));
+                              "Fail to fsync the AOF file: %s",strerror(errno));
                 }
             } else {
                 atomicSet(server.aof_bio_fsync_status,C_OK);
@@ -303,7 +303,7 @@ void *bioProcessBackgroundJobs(void *arg) {
         /* Lock again before reiterating the loop, if there are no longer
          * jobs to process we'll block again in pthread_cond_wait(). */
         pthread_mutex_lock(&bio_mutex[type]);
-        // ½«Ö´ĞĞÍê³ÉµÄÈÎÎñ´Ó¶ÓÁĞÖĞÉ¾³ı£¬²¢¼õÉÙÈÎÎñ¼ÆÊıÆ÷
+        // å°†æ‰§è¡Œå®Œæˆçš„ä»»åŠ¡ä»é˜Ÿåˆ—ä¸­åˆ é™¤ï¼Œå¹¶å‡å°‘ä»»åŠ¡è®¡æ•°å™¨
         listDelNode(bio_jobs[type],ln);
         bio_pending[type]--;
 
@@ -313,7 +313,7 @@ void *bioProcessBackgroundJobs(void *arg) {
 }
 
 /* Return the number of pending jobs of the specified type. */
-// ·µ»ØµÈ´ıÖĞµÄ type ÀàĞÍµÄ¹¤×÷µÄÊıÁ¿
+// è¿”å›ç­‰å¾…ä¸­çš„ type ç±»å‹çš„å·¥ä½œçš„æ•°é‡
 unsigned long long bioPendingJobsOfType(int type) {
     unsigned long long val;
     pthread_mutex_lock(&bio_mutex[type]);
@@ -331,7 +331,7 @@ unsigned long long bioPendingJobsOfType(int type) {
  *
  * This function is useful when from another thread, we want to wait
  * a bio.c thread to do more work in a blocking way.
- * 
+ *
  */
 unsigned long long bioWaitStepOfType(int type) {
     unsigned long long val;
@@ -347,7 +347,7 @@ unsigned long long bioWaitStepOfType(int type) {
 
 /* Kill the running bio threads in an unclean way. This function should be
  * used only when it's critical to stop the threads for some reason.
- * ²»½øĞĞÇåÀí£¬Ö±½ÓÉ±ËÀ½ø³Ì£¬Ö»ÔÚ³öÏÖÑÏÖØ´íÎóÊ±Ê¹ÓÃ * Currently Redis does this only on crash (for instance on SIGSEGV) in order
+ * ä¸è¿›è¡Œæ¸…ç†ï¼Œç›´æ¥æ€æ­»è¿›ç¨‹ï¼Œåªåœ¨å‡ºç°ä¸¥é‡é”™è¯¯æ—¶ä½¿ç”¨ * Currently Redis does this only on crash (for instance on SIGSEGV) in order
  * to perform a fast memory check without other threads messing with memory. */
 void bioKillThreads(void) {
     int err, j;
@@ -357,11 +357,11 @@ void bioKillThreads(void) {
         if (bio_threads[j] && pthread_cancel(bio_threads[j]) == 0) {
             if ((err = pthread_join(bio_threads[j],NULL)) != 0) {
                 serverLog(LL_WARNING,
-                    "Bio thread for job type #%d can not be joined: %s",
-                        j, strerror(err));
+                          "Bio thread for job type #%d can not be joined: %s",
+                          j, strerror(err));
             } else {
                 serverLog(LL_WARNING,
-                    "Bio thread for job type #%d terminated",j);
+                          "Bio thread for job type #%d terminated",j);
             }
         }
     }

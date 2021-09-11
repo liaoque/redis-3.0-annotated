@@ -40,7 +40,7 @@
 #define RIO_FLAG_READ_ERROR (1<<0)
 #define RIO_FLAG_WRITE_ERROR (1<<1)
 /*
- * RIO API ½Ó¿ÚºÍ×´Ì¬
+ * RIO API æŽ¥å£å’ŒçŠ¶æ€
  */
 struct _rio {
     /* Backend functions.
@@ -55,11 +55,11 @@ struct _rio {
      * designed so that can be called with the current checksum, and the buf
      * and len fields pointing to the new block of data to add to the checksum
      * computation. */
-    // Ð£ÑéºÍ¼ÆËãº¯Êý£¬Ã¿´ÎÓÐÐ´Èë/¶ÁÈ¡ÐÂÊý¾ÝÊ±¶¼Òª¼ÆËãÒ»´Î
+    // æ ¡éªŒå’Œè®¡ç®—å‡½æ•°ï¼Œæ¯æ¬¡æœ‰å†™å…¥/è¯»å–æ–°æ•°æ®æ—¶éƒ½è¦è®¡ç®—ä¸€æ¬¡
     void (*update_cksum)(struct _rio *, const void *buf, size_t len);
 
     /* The current checksum and flags (see RIO_FLAG_*) */
-	// µ±Ç°Ð£ÑéºÍ cksum
+    // å½“å‰æ ¡éªŒå’Œ cksum
     uint64_t cksum, flags;
 
     /* number of bytes read or written */
@@ -72,17 +72,17 @@ struct _rio {
     union {
         /* In-memory buffer target. */
         struct {
-            // »º´æÖ¸Õë
+            // ç¼“å­˜æŒ‡é’ˆ
             sds ptr;
             off_t pos;
         } buffer;
         /* Stdio file pointer target. */
         struct {
-            // ±»´ò¿ªÎÄ¼þµÄÖ¸Õë
+            // è¢«æ‰“å¼€æ–‡ä»¶çš„æŒ‡é’ˆ
             FILE *fp;
-            // ×î½üÒ»´Î fsync() ÒÔÀ´£¬Ð´ÈëµÄ×Ö½ÚÁ¿
+            // æœ€è¿‘ä¸€æ¬¡ fsync() ä»¥æ¥ï¼Œå†™å…¥çš„å­—èŠ‚é‡
             off_t buffered; /* Bytes written since last fsync. */
-            // Ð´Èë¶àÉÙ×Ö½ÚÖ®ºó£¬²Å»á×Ô¶¯Ö´ÐÐÒ»´Î fsync()
+            // å†™å…¥å¤šå°‘å­—èŠ‚ä¹‹åŽï¼Œæ‰ä¼šè‡ªåŠ¨æ‰§è¡Œä¸€æ¬¡ fsync()
             off_t autosync; /* fsync after 'autosync' bytes written. */
         } file;
         /* Connection object (used to read from socket) */
@@ -109,9 +109,9 @@ typedef struct _rio rio;
  * if needed. */
 
 /*
- * ½« buf ÖÐµÄ len ×Ö½ÚÐ´Èëµ½ r ÖÐ¡£
+ * å°† buf ä¸­çš„ len å­—èŠ‚å†™å…¥åˆ° r ä¸­ã€‚
  *
- * Ð´Èë³É¹¦·µ»ØÊµ¼ÊÐ´ÈëµÄ×Ö½ÚÊý£¬Ð´ÈëÊ§°Ü·µ»Ø -1 ¡£
+ * å†™å…¥æˆåŠŸè¿”å›žå®žé™…å†™å…¥çš„å­—èŠ‚æ•°ï¼Œå†™å…¥å¤±è´¥è¿”å›ž -1 ã€‚
  */
 static inline size_t rioWrite(rio *r, const void *buf, size_t len) {
     if (r->flags & RIO_FLAG_WRITE_ERROR) return 0;
@@ -130,9 +130,9 @@ static inline size_t rioWrite(rio *r, const void *buf, size_t len) {
 }
 
 /*
- * ´Ó r ÖÐ¶ÁÈ¡ len ×Ö½Ú£¬²¢½«ÄÚÈÝ±£´æµ½ buf ÖÐ¡£
+ * ä»Ž r ä¸­è¯»å– len å­—èŠ‚ï¼Œå¹¶å°†å†…å®¹ä¿å­˜åˆ° buf ä¸­ã€‚
  *
- * ¶ÁÈ¡³É¹¦·µ»Ø 1 £¬Ê§°Ü·µ»Ø 0 ¡£
+ * è¯»å–æˆåŠŸè¿”å›ž 1 ï¼Œå¤±è´¥è¿”å›ž 0 ã€‚
  */
 static inline size_t rioRead(rio *r, void *buf, size_t len) {
     if (r->flags & RIO_FLAG_READ_ERROR) return 0;
@@ -151,7 +151,7 @@ static inline size_t rioRead(rio *r, void *buf, size_t len) {
 }
 
 /*
- * ·µ»Ø r µÄµ±Ç°Æ«ÒÆÁ¿¡£
+ * è¿”å›ž r çš„å½“å‰åç§»é‡ã€‚
  */
 static inline off_t rioTell(rio *r) {
     return r->tell(r);

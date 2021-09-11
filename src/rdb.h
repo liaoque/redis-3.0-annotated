@@ -37,9 +37,9 @@
 #include "server.h"
 
 /* The current RDB version. When the format changes in a way that is no longer
- * backward compatible this number gets incremented. 
+ * backward compatible this number gets incremented.
  *
- * RDB µÄ°æ±¾£¬µ±ÐÂ°æ±¾²»Ïò¾Í°æ±¾¼æÈÝÊ±£¬ÔöÒ»
+ * RDB çš„ç‰ˆæœ¬ï¼Œå½“æ–°ç‰ˆæœ¬ä¸å‘å°±ç‰ˆæœ¬å…¼å®¹æ—¶ï¼Œå¢žä¸€
  */
 #define RDB_VERSION 9
 
@@ -52,44 +52,44 @@
  * 10|000000 [32 bit integer] => A full 32 bit len in net byte order will follow
  * 10|000001 [64 bit integer] => A full 64 bit len in net byte order will follow
  * 11|OBKIND this means: specially encoded object will follow. The six bits
- * Í¨¹ý¶ÁÈ¡µÚÒ»×Ö½ÚµÄ×î¸ß 2 Î»À´ÅÐ¶Ï³¤¶È
+ * é€šè¿‡è¯»å–ç¬¬ä¸€å­—èŠ‚çš„æœ€é«˜ 2 ä½æ¥åˆ¤æ–­é•¿åº¦
  *
  * 00|000000 => if the two MSB are 00 the len is the 6 bits of this byte
- *              ³¤¶È±àÂëÔÚÕâÒ»×Ö½ÚµÄÆäÓà 6 Î»ÖÐ
+ *              é•¿åº¦ç¼–ç åœ¨è¿™ä¸€å­—èŠ‚çš„å…¶ä½™ 6 ä½ä¸­
  *
  * 01|000000 00000000 =>  01, the len is 14 byes, 6 bits + 8 bits of next byte
- *                        ³¤¶ÈÎª 14 Î»£¬µ±Ç°×Ö½Ú 6 Î»£¬¼ÓÉÏÏÂ¸ö×Ö½Ú 8 Î»
+ *                        é•¿åº¦ä¸º 14 ä½ï¼Œå½“å‰å­—èŠ‚ 6 ä½ï¼ŒåŠ ä¸Šä¸‹ä¸ªå­—èŠ‚ 8 ä½
  *
  * 10|000000 [32 bit integer] => if it's 01, a full 32 bit len will follow
- *                               ³¤¶ÈÓÉºó¸úµÄ 32 Î»±£´æ
+ *                               é•¿åº¦ç”±åŽè·Ÿçš„ 32 ä½ä¿å­˜
  *
  * 11|000000 this means: specially encoded object will follow. The six bits
  *           number specify the kind of object that follows.
  *           See the REDIS_RDB_ENC_* defines.
- *           ºó¸úÒ»¸öÌØÊâ±àÂëµÄ¶ÔÏó¡£×Ö½ÚÖÐµÄ 6 Î»Ö¸¶¨¶ÔÏóµÄÀàÐÍ¡£
- *           ²é¿´ REDIS_RDB_ENC_* ¶¨Òå»ñµÃ¸ü¶àÏûÏ¢ *           number specify the kind of object that follows.
+ *           åŽè·Ÿä¸€ä¸ªç‰¹æ®Šç¼–ç çš„å¯¹è±¡ã€‚å­—èŠ‚ä¸­çš„ 6 ä½æŒ‡å®šå¯¹è±¡çš„ç±»åž‹ã€‚
+ *           æŸ¥çœ‹ REDIS_RDB_ENC_* å®šä¹‰èŽ·å¾—æ›´å¤šæ¶ˆæ¯ *           number specify the kind of object that follows.
  *           See the RDB_ENC_* defines.
  *
  * Lengths up to 63 are stored using a single byte, most DB keys, and may
- * values, will fit inside. 
+ * values, will fit inside.
  *
- * Ò»¸ö×Ö½Ú£¨µÄÆäÖÐ 6 ¸ö×Ö½Ú£©¿ÉÒÔ±£´æµÄ×î´ó³¤¶ÈÊÇ 63 £¨°üÀ¨ÔÚÄÚ£©£¬
- * ¶ÔÓÚ´ó¶àÊý¼üºÍÖµÀ´Ëµ£¬¶¼ÒÑ¾­×ã¹»ÁË
+ * ä¸€ä¸ªå­—èŠ‚ï¼ˆçš„å…¶ä¸­ 6 ä¸ªå­—èŠ‚ï¼‰å¯ä»¥ä¿å­˜çš„æœ€å¤§é•¿åº¦æ˜¯ 63 ï¼ˆåŒ…æ‹¬åœ¨å†…ï¼‰ï¼Œ
+ * å¯¹äºŽå¤§å¤šæ•°é”®å’Œå€¼æ¥è¯´ï¼Œéƒ½å·²ç»è¶³å¤Ÿäº†
  */
 #define RDB_6BITLEN 0
 #define RDB_14BITLEN 1
 #define RDB_32BITLEN 0x80
 #define RDB_64BITLEN 0x81
 #define RDB_ENCVAL 3
-// ±íÊ¾¶ÁÈ¡/Ð´Èë´íÎó
+// è¡¨ç¤ºè¯»å–/å†™å…¥é”™è¯¯
 #define RDB_LENERR UINT64_MAX
 
 /* When a length of a string object stored on disk has the first two bits
  * set, the remaining six bits specify a special encoding for the object
- * accordingly to the following defines: 
+ * accordingly to the following defines:
  *
- * µ±¶ÔÏóÊÇÒ»¸ö×Ö·û´®¶ÔÏóÊ±£¬
- * ×î¸ßÁ½¸öÎ»Ö®ºóµÄÁ½¸öÎ»£¨µÚ 3 ¸öÎ»ºÍµÚ 4 ¸öÎ»£©Ö¸¶¨ÁË¶ÔÏóµÄÌØÊâ±àÂë
+ * å½“å¯¹è±¡æ˜¯ä¸€ä¸ªå­—ç¬¦ä¸²å¯¹è±¡æ—¶ï¼Œ
+ * æœ€é«˜ä¸¤ä¸ªä½ä¹‹åŽçš„ä¸¤ä¸ªä½ï¼ˆç¬¬ 3 ä¸ªä½å’Œç¬¬ 4 ä¸ªä½ï¼‰æŒ‡å®šäº†å¯¹è±¡çš„ç‰¹æ®Šç¼–ç 
  */
 #define RDB_ENC_INT8 0        /* 8 bit signed integer */
 #define RDB_ENC_INT16 1       /* 16 bit signed integer */
@@ -98,9 +98,9 @@
 
 /* Map object types to RDB object types. Macros starting with OBJ_ are for
  * memory storage and may change. Instead RDB types must be fixed because
- * we store them on disk. 
+ * we store them on disk.
  *
- * ¶ÔÏóÀàÐÍÔÚ RDB ÎÄ¼þÖÐµÄÀàÐÍ
+ * å¯¹è±¡ç±»åž‹åœ¨ RDB æ–‡ä»¶ä¸­çš„ç±»åž‹
  */
 #define RDB_TYPE_STRING 0
 #define RDB_TYPE_LIST   1
@@ -113,8 +113,8 @@
                                the generating module being loaded. */
 /* NOTE: WHEN ADDING NEW RDB TYPE, UPDATE rdbIsObjectType() BELOW */
 
-/* Object types for encoded objects. 
- * ¶ÔÏóµÄ±àÂë·½Ê½
+/* Object types for encoded objects.
+ * å¯¹è±¡çš„ç¼–ç æ–¹å¼
  */
 #define RDB_TYPE_HASH_ZIPMAP    9
 #define RDB_TYPE_LIST_ZIPLIST  10
@@ -125,27 +125,27 @@
 #define RDB_TYPE_STREAM_LISTPACKS 15
 /* NOTE: WHEN ADDING NEW RDB TYPE, UPDATE rdbIsObjectType() BELOW */
 
-/* Test if a type is an object type. 
- * ¼ì²é¸ø¶¨ÀàÐÍÊÇ·ñ¶ÔÏó
+/* Test if a type is an object type.
+ * æ£€æŸ¥ç»™å®šç±»åž‹æ˜¯å¦å¯¹è±¡
  */
 #define rdbIsObjectType(t) ((t >= 0 && t <= 7) || (t >= 9 && t <= 15))
 
-/* Special RDB opcodes (saved/loaded with rdbSaveType/rdbLoadType). 
+/* Special RDB opcodes (saved/loaded with rdbSaveType/rdbLoadType).
  *
- * Êý¾Ý¿âÌØÊâ²Ù×÷±êÊ¶·û
+ * æ•°æ®åº“ç‰¹æ®Šæ“ä½œæ ‡è¯†ç¬¦
  */
 #define RDB_OPCODE_MODULE_AUX 247   /* Module auxiliary data. */
 #define RDB_OPCODE_IDLE       248   /* LRU idle time. */
 #define RDB_OPCODE_FREQ       249   /* LFU frequency. */
 #define RDB_OPCODE_AUX        250   /* RDB aux field. */
 #define RDB_OPCODE_RESIZEDB   251   /* Hash table resize hint. */
-// ÒÔ MS ¼ÆËãµÄ¹ýÆÚÊ±¼ä
+// ä»¥ MS è®¡ç®—çš„è¿‡æœŸæ—¶é—´
 #define RDB_OPCODE_EXPIRETIME_MS 252    /* Expire time in milliseconds. */
 
 #define RDB_OPCODE_EXPIRETIME 253       /* Old expire time in seconds. */
-// Ñ¡ÔñÊý¾Ý¿â
+// é€‰æ‹©æ•°æ®åº“
 #define RDB_OPCODE_SELECTDB   254   /* DB number of the following keys. */
-// Êý¾Ý¿âµÄ½áÎ²£¨µ«²»ÊÇ RDB ÎÄ¼þµÄ½áÎ²£©
+// æ•°æ®åº“çš„ç»“å°¾ï¼ˆä½†ä¸æ˜¯ RDB æ–‡ä»¶çš„ç»“å°¾ï¼‰
 #define RDB_OPCODE_EOF        255   /* End of the RDB file. */
 
 /* Module serialized values sub opcodes */
