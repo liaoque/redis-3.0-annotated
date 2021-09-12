@@ -1016,12 +1016,14 @@ int redisGetReply(redisContext *c, void **reply) {
     void *aux = NULL;
 
     /* Try to read pending replies */
+    // 初始化 服务器回复的结构
     if (redisGetReplyFromReader(c,&aux) == REDIS_ERR)
         return REDIS_ERR;
 
     /* For the blocking context, flush output buffer and read reply */
     if (aux == NULL && c->flags & REDIS_BLOCK) {
         /* Write until done */
+        // 获取回复的字节数
         do {
             if (redisBufferWrite(c,&wdone) == REDIS_ERR)
                 return REDIS_ERR;
@@ -1029,12 +1031,14 @@ int redisGetReply(redisContext *c, void **reply) {
 
         /* Read until there is a reply */
         do {
+            // 把回复的buf 写到 c->reader->buf
             if (redisBufferRead(c) == REDIS_ERR)
                 return REDIS_ERR;
 
             /* We loop here in case the user has specified a RESP3
              * PUSH handler (e.g. for client tracking). */
             do {
+                // 从reader读取回复信息
                 if (redisGetReplyFromReader(c,&aux) == REDIS_ERR)
                     return REDIS_ERR;
             } while (redisHandledPushReply(c, aux));

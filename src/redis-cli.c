@@ -838,6 +838,7 @@ static int cliSwitchProto(void) {
 static int cliConnect(int flags) {
     if (context == NULL || flags & CC_FORCE) {
         if (context != NULL) {
+            // 释放内存
             redisFree(context);
             config.dbnum = 0;
             config.in_multi = 0;
@@ -847,14 +848,17 @@ static int cliConnect(int flags) {
         /* Do not use hostsocket when we got redirected in cluster mode */
         if (config.hostsocket == NULL ||
             (config.cluster_mode && config.cluster_reissue_command)) {
+            // ip链接
             context = redisConnect(config.hostip,config.hostport);
         } else {
+            // 套接字链接
             context = redisConnectUnix(config.hostsocket);
         }
 
         if (!context->err && config.tls) {
             const char *err = NULL;
             if (cliSecureConnection(context, config.sslconfig, &err) == REDIS_ERR && err) {
+                // ssl链接失败提示
                 fprintf(stderr, "Could not negotiate a TLS connection: %s\n", err);
                 redisFree(context);
                 context = NULL;
@@ -863,6 +867,7 @@ static int cliConnect(int flags) {
         }
 
         if (context->err) {
+            // 链接失败
             if (!(flags & CC_QUIET)) {
                 fprintf(stderr,"Could not connect to Redis at ");
                 if (config.hostsocket == NULL)
@@ -885,6 +890,7 @@ static int cliConnect(int flags) {
         anetKeepAlive(NULL, context->fd, REDIS_CLI_KEEPALIVE_INTERVAL);
 
         /* Do AUTH, select the right DB, switch to RESP3 if needed. */
+        // 输入密码
         if (cliAuth(context, config.user, config.auth) != REDIS_OK)
             return REDIS_ERR;
         if (cliSelect() != REDIS_OK)
@@ -1523,6 +1529,7 @@ static int parseOptions(int argc, char **argv) {
             sdsfree(config.hostip);
             config.hostip = sdsnew(argv[++i]);
         } else if (!strcmp(argv[i],"-h") && lastarg) {
+            // 不存在即提示
             usage();
         } else if (!strcmp(argv[i],"--help")) {
             usage();
@@ -1550,6 +1557,8 @@ static int parseOptions(int argc, char **argv) {
         } else if (!strcmp(argv[i],"--user") && !lastarg) {
             config.user = argv[++i];
         } else if (!strcmp(argv[i],"-u") && !lastarg) {
+            // 支持类似mysql的url
+            // 	'redis://[[<username> ":"] <password> "@"] [<hostname> [":" <port>]]["/" [<db>]]'
             parseRedisUri(argv[++i]);
         } else if (!strcmp(argv[i],"--raw")) {
             config.output = OUTPUT_RAW;
@@ -7482,11 +7491,18 @@ static dictType typeinfoDictType = {
     NULL                       /* allow to expand */
 };
 
+/**
+ * 获取 keys中每个元素的 类型
+ * @param types_dict 类型集合，用于解析types
+ * @param keys
+ * @param types 返回值，每个key对应的类型
+ */
 static void getKeyTypes(dict *types_dict, redisReply *keys, typeinfo **types) {
     redisReply *reply;
     unsigned int i;
 
     /* Pipeline TYPE commands */
+    // type 命令，获取所有key的类型
     for(i=0;i<keys->elements;i++) {
         const char* argv[] = {"TYPE", keys->element[i]->str};
         size_t lens[] = {4, keys->element[i]->len};
@@ -7495,6 +7511,7 @@ static void getKeyTypes(dict *types_dict, redisReply *keys, typeinfo **types) {
 
     /* Retrieve types */
     for(i=0;i<keys->elements;i++) {
+        // 管道是批量发送的，但是回复是单个的
         if(redisGetReply(context, (void**)&reply)!=REDIS_OK) {
             fprintf(stderr, "Error getting type for key '%s' (%d: %s)\n",
                 keys->element[i]->str, context->err, context->errstr);
@@ -7511,9 +7528,11 @@ static void getKeyTypes(dict *types_dict, redisReply *keys, typeinfo **types) {
         }
 
         sds typereply = sdsnew(reply->str);
+        // 获取 key的类型
         dictEntry *de = dictFind(types_dict, typereply);
         sdsfree(typereply);
         typeinfo *type = NULL;
+        // 未知类型 则创建一个 { "other", NULL, "?" } 的类型
         if (de)
             type = dictGetVal(de);
         else if (strcmp(reply->str, "none")) /* create new types for modules, (but not for deleted keys) */
@@ -7523,6 +7542,14 @@ static void getKeyTypes(dict *types_dict, redisReply *keys, typeinfo **types) {
     }
 }
 
+/**
+ * 获取keys的内存总数
+ * @param keys  key数组
+ * @param types 每个key对应的的类型
+ * @param sizes 返回值 所有key的大小
+ * @param memkeys  0，获取key的大小， 1，key的值以及为管理该key分配的内存总字节数
+ * @param memkeys_samples   0，表示采样所有的， 1，采样指定的数量
+ */
 static void getKeySizes(redisReply *keys, typeinfo **types,
                         unsigned long long *sizes, int memkeys,
                         unsigned memkeys_samples)
@@ -7600,6 +7627,7 @@ static void findBigKeys(int memkeys, unsigned memkeys_samples) {
     typeinfo_add(types_dict, "stream", &type_stream);
 
     /* Total keys pre scanning */
+    // keys的总数
     total_keys = getDbSize();
 
     /* Status message */
@@ -7613,6 +7641,7 @@ static void findBigKeys(int memkeys, unsigned memkeys_samples) {
         pct = 100 * (double)sampled/total_keys;
 
         /* Grab some keys and point to the keys array */
+        // scan 分批获取 key 列表
         reply = sendScan(&it);
         keys  = reply->element[1];
 
@@ -7630,7 +7659,9 @@ static void findBigKeys(int memkeys, unsigned memkeys_samples) {
         }
 
         /* Retrieve types and then sizes */
+        // 获取 keys
         getKeyTypes(types_dict, keys, types);
+        // 根据类型 获取 key的内存大小
         getKeySizes(keys, types, sizes, memkeys, memkeys_samples);
 
         /* Now update our stats */
@@ -8185,6 +8216,9 @@ static void intrinsicLatencyMode(void) {
 
 static sds askPassword(const char *msg) {
     linenoiseMaskModeEnable();
+    //  linenoise是一个命令行编辑库(line editing library),
+    //  readline的替代品,可以用于tab自动补全方法的实现。
+    //  https://zhuanlan.zhihu.com/p/103845625
     sds auth = linenoise(msg);
     linenoiseMaskModeDisable();
     return auth;
@@ -8202,24 +8236,44 @@ int main(int argc, char **argv) {
     config.hostip = sdsnew("127.0.0.1");
     config.hostport = 6379;
     config.hostsocket = NULL;
+    // Execute specified command N times
+    // 命令执行时间？
     config.repeat = 1;
+    // 配合 repeat 使用， 设置命令执行的秒数
     config.interval = 0;
     config.dbnum = 0;
     config.interactive = 0;
     config.shutdown = 0;
     config.monitor_mode = 0;
     config.pubsub_mode = 0;
+    // 采样？？？
     config.latency_mode = 0;
+    // 采样距离 配合 interactive 使用 ？？？
     config.latency_dist_mode = 0;
+    // 延迟历史记录 ？？？
+    // 该参数强制 latency_mode = 1
     config.latency_history = 0;
+    // lua 测试负载， 2/8分布？？？
     config.lru_test_mode = 0;
+    // 指定测试样例大小
     config.lru_test_sample_size = 0;
+    //
     config.cluster_mode = 0;
+    // ？？？ --slave， --replica， --stat，--scan
+    // 都会让 slave_mode = 1
     config.slave_mode = 0;
+    // 开启/关闭 rdb模式，指定rdb文件名
+    //  "--rdb"
     config.getrdb_mode = 0;
+    //
     config.stat_mode = 0;
     config.scan_mode = 0;
+    // 开启内部测试，指定持续时间
+    // "--intrinsic-latency"
+    // config.intrinsic_latency_duration = 持续时间;
     config.intrinsic_latency_mode = 0;
+    // pattern 模式？？？
+    // 可使用 "--pattern"  "--quoted-pattern" 指定
     config.pattern = NULL;
     config.rdb_filename = NULL;
     config.pipe_mode = 0;
@@ -8227,10 +8281,17 @@ int main(int argc, char **argv) {
     config.pipe_timeout = REDIS_CLI_DEFAULT_PIPE_TIMEOUT;
     config.bigkeys = 0;
     config.hotkeys = 0;
+    // Read last argument from STDIN
     config.stdinarg = 0;
+    // 参数带密码，优先级最高
+    // 其次设置 REDIS_CLI_AUTH_ENV 环境变量
     config.auth = NULL;
+    // 强制使用标准输入   输入带掩码的密码
+    // -a <password>  和 REDIS_CLI_AUTH_ENV 被忽略
     config.askpass = 0;
+    // 验证用户
     config.user = NULL;
+    //
     config.eval = NULL;
     config.eval_ldb = 0;
     config.eval_ldb_end = 0;
@@ -8239,6 +8300,7 @@ int main(int argc, char **argv) {
     config.last_cmd_type = -1;
     config.verbose = 0;
     config.set_errcode = 0;
+    // 命令行 使用密码时不出现警告？/？？？
     config.no_auth_warning = 0;
     config.in_multi = 0;
     config.cluster_manager_command.name = NULL;
@@ -8254,6 +8316,7 @@ int main(int argc, char **argv) {
     config.cluster_manager_command.weight = NULL;
     config.cluster_manager_command.weight_argc = 0;
     config.cluster_manager_command.slots = 0;
+    // 集群
     config.cluster_manager_command.timeout = CLUSTER_MANAGER_MIGRATE_TIMEOUT;
     config.cluster_manager_command.pipeline = CLUSTER_MANAGER_MIGRATE_PIPELINE;
     config.cluster_manager_command.threshold =
@@ -8261,34 +8324,54 @@ int main(int argc, char **argv) {
     config.cluster_manager_command.backup_dir = NULL;
     pref.hints = 1;
 
+    // 调色板？
     spectrum_palette = spectrum_palette_color;
     spectrum_palette_size = spectrum_palette_color_size;
 
     if (!isatty(fileno(stdout)) && (getenv("FAKETTY") == NULL)) {
+        // 非 tty， 且非伪造的 tty
+        // 输出流
         config.output = OUTPUT_RAW;
+        // 字符串不带引号
         config.push_output = 0;
     } else {
+        // 标准输出
         config.output = OUTPUT_STANDARD;
+        // 字符串带引号
         config.push_output = 1;
     }
+    // config.output = OUTPUT_CSV;
+    // 输出csv文件
+
+
+    // 分隔符
     config.mb_delim = sdsnew("\n");
     config.cmd_delim = sdsnew("\n");
 
+    // 解析参数
     firstarg = parseOptions(argc,argv);
+
+    //
     argc -= firstarg;
     argv += firstarg;
 
+    // 解析环境变量
     parseEnv();
 
+    // 命令行提示输入密码
+    // 并返回密码
     if (config.askpass) {
         config.auth = askPassword("Please input password: ");
     }
 
+    // 提示输入集群节点密码
+    // 并返回
     if (config.cluster_manager_command.from_askpass) {
         config.cluster_manager_command.from_pass = askPassword(
             "Please input import source node password: ");
     }
 
+    //使用ssl证书
 #ifdef USE_OPENSSL
     if (config.tls) {
         cliSecureInit();
@@ -8296,6 +8379,7 @@ int main(int argc, char **argv) {
 #endif
 
     gettimeofday(&tv, NULL);
+    // 初始化向量数组
     init_genrand64(((long long) tv.tv_sec * 1000000 + tv.tv_usec) ^ getpid());
 
     /* Cluster Manager mode */
@@ -8335,18 +8419,24 @@ int main(int argc, char **argv) {
     }
 
     /* Pipe mode */
+    // 管道模式， 管道超时时间
+    // "--pipe"，"--pipe-timeout"
     if (config.pipe_mode) {
         if (cliConnect(0) == REDIS_ERR) exit(1);
         pipeMode();
     }
 
     /* Find big keys */
+    // 以key的值大小  查找大键
+    // "--bigkeys"
     if (config.bigkeys) {
         if (cliConnect(0) == REDIS_ERR) exit(1);
         findBigKeys(0, 0);
     }
 
     /* Find large keys */
+    // key的值以及为管理该key分配的内存总字节数 查找 大key
+    // 抽 memkeys_samples 个
     if (config.memkeys) {
         if (cliConnect(0) == REDIS_ERR) exit(1);
         findBigKeys(1, config.memkeys_samples);
@@ -8393,6 +8483,7 @@ int main(int argc, char **argv) {
 
     /* Otherwise, we have some arguments to execute */
     if (cliConnect(0) != REDIS_OK) exit(1);
+
     if (config.eval) {
         return evalMode(argc,argv);
     } else {

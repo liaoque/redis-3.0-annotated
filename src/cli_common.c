@@ -101,6 +101,7 @@ int cliSecureConnection(redisContext *c, cliSSLconfig config, const char **err) 
         return REDIS_ERR;
     }
 
+    // 初始化ssl
     return redisInitiateSSL(c, ssl);
 
 error:
@@ -187,8 +188,8 @@ int cliSecureInit()
 {
 #ifdef USE_OPENSSL
     ERR_load_crypto_strings();
-    SSL_load_error_strings();
-    SSL_library_init();
+    SSL_load_error_strings(); /* 为了更友好的报错，加载错误码的描述字符串 */
+    SSL_library_init(); /* 为SSL加载加密和哈希算法 */
 #endif
     return REDIS_OK;
 }
