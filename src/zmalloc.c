@@ -83,6 +83,7 @@ void zlibc_free(void *ptr) {
 #define update_zmalloc_stat_alloc(__n) atomicIncr(used_memory,(__n))
 #define update_zmalloc_stat_free(__n) atomicDecr(used_memory,(__n))
 
+// 当前内存使用量
 static redisAtomic size_t used_memory = 0;
 
 static void zmalloc_default_oom(size_t size) {
@@ -97,13 +98,21 @@ static void (*zmalloc_oom_handler)(size_t) = zmalloc_default_oom;
 /* Try allocating memory, and return NULL if failed.
  * '*usable' is set to the usable size if non NULL. */
 void *ztrymalloc_usable(size_t size, size_t *usable) {
+    // 断言内存没溢出
     ASSERT_NO_SIZE_OVERFLOW(size);
+    // 分配内存
+    // 这个是内存不对齐分配
+    // 具体看 zmalloc_size 函数的实现，且联系 sdsnew的创建一起看
     void *ptr = malloc(MALLOC_MIN_SIZE(size)+PREFIX_SIZE);
 
     if (!ptr) return NULL;
 #ifdef HAVE_MALLOC_SIZE
+    // 普通操作系统
+    // 系统内置, 获取实际内存分配大小
     size = zmalloc_size(ptr);
+    // 原子增加当前内存使用 size大小
     update_zmalloc_stat_alloc(size);
+    // 返回实际分配内存大小
     if (usable) *usable = size;
     return ptr;
 #else
@@ -116,7 +125,9 @@ void *ztrymalloc_usable(size_t size, size_t *usable) {
 
 /* Allocate memory or panic */
 void *zmalloc(size_t size) {
+    // 申请内存
     void *ptr = ztrymalloc_usable(size, NULL);
+    // 失败调用oom 处理函数
     if (!ptr) zmalloc_oom_handler(size);
     return ptr;
 }
@@ -196,7 +207,10 @@ void *zcalloc_usable(size_t size, size_t *usable) {
 }
 
 /* Try reallocating memory, and return NULL if failed.
- * '*usable' is set to the usable size if non NULL. */
+ * '*usable' is set to the usable size if non NULL.
+ *
+ *
+ */
 void *ztryrealloc_usable(void *ptr, size_t size, size_t *usable) {
     ASSERT_NO_SIZE_OVERFLOW(size);
 #ifndef HAVE_MALLOC_SIZE
@@ -206,25 +220,34 @@ void *ztryrealloc_usable(void *ptr, size_t size, size_t *usable) {
     void *newptr;
 
     /* not allocating anything, just redirect to free. */
+//    size = 0, 直接释放内存
     if (size == 0 && ptr != NULL) {
         zfree(ptr);
         if (usable) *usable = 0;
         return NULL;
     }
     /* Not freeing anything, just redirect to malloc. */
+    // 没指定内存
     if (ptr == NULL)
         return ztrymalloc_usable(size, usable);
 
 #ifdef HAVE_MALLOC_SIZE
+    // 原内存大小
     oldsize = zmalloc_size(ptr);
+    // 重新分配内存大小
+    // size > ptr 则重新分配，并释放原来的
+    // 否则 在原来内存上调整
     newptr = realloc(ptr,size);
     if (newptr == NULL) {
         if (usable) *usable = 0;
         return NULL;
     }
 
+    // 原子 减少内存大小
     update_zmalloc_stat_free(oldsize);
+    // 新内存大小
     size = zmalloc_size(newptr);
+    // 原子增加
     update_zmalloc_stat_alloc(size);
     if (usable) *usable = size;
     return newptr;
@@ -638,41 +661,41 @@ size_t zmalloc_get_private_dirty(long pid) {
 size_t zmalloc_get_memory_size(void) {
 #if defined(__unix__) || defined(__unix) || defined(unix) || \
     (defined(__APPLE__) && defined(__MACH__))
-#if defined(CTL_HW) && (defined(HW_MEMSIZE) || defined(HW_PHYSMEM64))
-    int mib[2];
-    mib[0] = CTL_HW;
-#if defined(HW_MEMSIZE)
-    mib[1] = HW_MEMSIZE;            /* OSX. --------------------- */
-#elif defined(HW_PHYSMEM64)
-    mib[1] = HW_PHYSMEM64;          /* NetBSD, OpenBSD. --------- */
-#endif
-    int64_t size = 0;               /* 64-bit */
-    size_t len = sizeof(size);
-    if (sysctl( mib, 2, &size, &len, NULL, 0) == 0)
-        return (size_t)size;
-    return 0L;          /* Failed? */
+    #if defined(CTL_HW) && (defined(HW_MEMSIZE) || defined(HW_PHYSMEM64))
+        int mib[2];
+        mib[0] = CTL_HW;
+        #if defined(HW_MEMSIZE)
+            mib[1] = HW_MEMSIZE;            /* OSX. --------------------- */
+        #elif defined(HW_PHYSMEM64)
+            mib[1] = HW_PHYSMEM64;          /* NetBSD, OpenBSD. --------- */
+        #endif
+        int64_t size = 0;               /* 64-bit */
+        size_t len = sizeof(size);
+        if (sysctl( mib, 2, &size, &len, NULL, 0) == 0)
+            return (size_t)size;
+        return 0L;          /* Failed? */
 
-#elif defined(_SC_PHYS_PAGES) && defined(_SC_PAGESIZE)
-    /* FreeBSD, Linux, OpenBSD, and Solaris. -------------------- */
-    return (size_t)sysconf(_SC_PHYS_PAGES) * (size_t)sysconf(_SC_PAGESIZE);
+    #elif defined(_SC_PHYS_PAGES) && defined(_SC_PAGESIZE)
+        /* FreeBSD, Linux, OpenBSD, and Solaris. -------------------- */
+        return (size_t)sysconf(_SC_PHYS_PAGES) * (size_t)sysconf(_SC_PAGESIZE);
 
-#elif defined(CTL_HW) && (defined(HW_PHYSMEM) || defined(HW_REALMEM))
-    /* DragonFly BSD, FreeBSD, NetBSD, OpenBSD, and OSX. -------- */
-    int mib[2];
-    mib[0] = CTL_HW;
-#if defined(HW_REALMEM)
-    mib[1] = HW_REALMEM;        /* FreeBSD. ----------------- */
-#elif defined(HW_PHYSMEM)
-    mib[1] = HW_PHYSMEM;        /* Others. ------------------ */
-#endif
-    unsigned int size = 0;      /* 32-bit */
-    size_t len = sizeof(size);
-    if (sysctl(mib, 2, &size, &len, NULL, 0) == 0)
-        return (size_t)size;
-    return 0L;          /* Failed? */
-#else
-    return 0L;          /* Unknown method to get the data. */
-#endif
+    #elif defined(CTL_HW) && (defined(HW_PHYSMEM) || defined(HW_REALMEM))
+        /* DragonFly BSD, FreeBSD, NetBSD, OpenBSD, and OSX. -------- */
+        int mib[2];
+        mib[0] = CTL_HW;
+    #if defined(HW_REALMEM)
+        mib[1] = HW_REALMEM;        /* FreeBSD. ----------------- */
+    #elif defined(HW_PHYSMEM)
+        mib[1] = HW_PHYSMEM;        /* Others. ------------------ */
+    #endif
+        unsigned int size = 0;      /* 32-bit */
+        size_t len = sizeof(size);
+        if (sysctl(mib, 2, &size, &len, NULL, 0) == 0)
+            return (size_t)size;
+        return 0L;          /* Failed? */
+    #else
+        return 0L;          /* Unknown method to get the data. */
+    #endif
 #else
     return 0L;          /* Unknown OS. */
 #endif

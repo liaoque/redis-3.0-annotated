@@ -83,18 +83,22 @@ static inline char hi_sdsReqType(size_t string_size) {
 hisds hi_sdsnewlen(const void *init, size_t initlen) {
     void *sh;
     hisds s;
+    // 获取sds struct类型
     char type = hi_sdsReqType(initlen);
     /* Empty strings are usually created in order to append. Use type 8
      * since type 5 is not good at this. */
     if (type == HI_SDS_TYPE_5 && initlen == 0) type = HI_SDS_TYPE_8;
+    // 获取sds struct类型 内存大小
     int hdrlen = hi_sdsHdrSize(type);
     unsigned char *fp; /* flags pointer. */
-
+    // hdrlen sds结构内存 + 字符串内存 + 结束符号
     sh = hi_s_malloc(hdrlen+initlen+1);
     if (sh == NULL) return NULL;
     if (!init)
         memset(sh, 0, hdrlen+initlen+1);
+    // 字符串首地址
     s = (char*)sh+hdrlen;
+    // 最后一位作为sds类型标识
     fp = ((unsigned char*)s)-1;
     switch(type) {
         case HI_SDS_TYPE_5: {
@@ -102,6 +106,8 @@ hisds hi_sdsnewlen(const void *init, size_t initlen) {
             break;
         }
         case HI_SDS_TYPE_8: {
+            // 返回结构首地址
+            // struct hisdshdr8 *sh = (struct hisdshdr8 *)((s)-(sizeof(struct hisdshdr8)))
             HI_SDS_HDR_VAR(8,s);
             sh->len = initlen;
             sh->alloc = initlen;
@@ -130,6 +136,7 @@ hisds hi_sdsnewlen(const void *init, size_t initlen) {
             break;
         }
     }
+    // 初始化
     if (initlen && init)
         memcpy(s, init, initlen);
     s[initlen] = '\0';

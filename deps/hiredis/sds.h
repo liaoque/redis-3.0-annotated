@@ -48,6 +48,7 @@ typedef char *hisds;
 
 /* Note: sdshdr5 is never used, we just access the flags byte directly.
  * However is here to document the layout of type 5 SDS strings. */
+//__attribute__ ((__packed__)) 内存不对齐
 struct __attribute__ ((__packed__)) hisdshdr5 {
     unsigned char flags; /* 3 lsb of type, and 5 msb of string length */
     char buf[];

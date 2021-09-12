@@ -8223,6 +8223,7 @@ int main(int argc, char **argv) {
     config.pattern = NULL;
     config.rdb_filename = NULL;
     config.pipe_mode = 0;
+    // 管道超时30秒
     config.pipe_timeout = REDIS_CLI_DEFAULT_PIPE_TIMEOUT;
     config.bigkeys = 0;
     config.hotkeys = 0;

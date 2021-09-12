@@ -50,7 +50,7 @@ hiredisAllocFuncs hiredisSetAllocators(hiredisAllocFuncs *ha);
 void hiredisResetAllocators(void);
 
 #ifndef _WIN32
-
+// 非 win32 系统
 /* Hiredis' configured allocator function pointer struct */
 extern hiredisAllocFuncs hiredisAllocFns;
 
