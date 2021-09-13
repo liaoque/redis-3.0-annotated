@@ -70,6 +70,7 @@ static unsigned long long mt[NN];
 static int mti=NN+1;
 
 /* initializes mt[NN] with a seed */
+// 随机数生产种子
 void init_genrand64(unsigned long long seed)
 {
     mt[0] = seed;
@@ -105,6 +106,8 @@ void init_by_array64(unsigned long long init_key[],
 }
 
 /* generates a random number on [0, 2^64-1]-interval */
+// 生成为随机数
+//https://zh.cppreference.com/w/cpp/numeric/random
 unsigned long long genrand64_int64(void)
 {
     int i;

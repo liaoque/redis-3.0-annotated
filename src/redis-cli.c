@@ -1752,8 +1752,10 @@ static int parseOptions(int argc, char **argv) {
             sdsfree(version);
             exit(0);
         } else if (!strcmp(argv[i],"-3")) {
+            //            resp3 协议？？？
             config.resp3 = 1;
         } else if (!strcmp(argv[i],"--show-pushes") && !lastarg) {
+            //            是否打印RESP3推送消息。默认情况下在以下情况下启用
             char *argval = argv[++i];
             if (!strncasecmp(argval, "n", 1)) {
                 config.push_output = 0;
@@ -1786,12 +1788,14 @@ static int parseOptions(int argc, char **argv) {
     }
 
     /* --ldb requires --eval. */
+    // 调试器 不能在 没有指定lua脚本的时候开启
     if (config.eval_ldb && config.eval == NULL) {
         fprintf(stderr,"Options --ldb and --ldb-sync-mode require --eval.\n");
         fprintf(stderr,"Try %s --help for more information.\n", argv[0]);
         exit(1);
     }
 
+    // 打印警告：在命令行上携带密码是不安全的
     if (!config.no_auth_warning && config.auth != NULL) {
         fputs("Warning: Using a password with '-a' or '-u' option on the command"
               " line interface may not be safe.\n", stderr);
@@ -7804,6 +7808,7 @@ static void findHotKeys(void) {
     /* SCAN loop */
     do {
         /* Calculate approximate percentage completion */
+        //        抽样百分比
         pct = 100 * (double)sampled/total_keys;
 
         /* Grab some keys and point to the keys array */
@@ -7829,11 +7834,15 @@ static void findHotKeys(void) {
             sampled++;
             /* Update overall progress */
             if(sampled % 1000000 == 0) {
+                // 100万个样品 打印一次
+                // 表示抽样进度
                 printf("[%05.2f%%] Sampled %llu keys so far\n", pct, sampled);
             }
 
             /* Use eviction pool here */
             k = 0;
+            // 找到 频率最高的key
+            // hot 淘汰算法
             while (k < HOTKEYS_SAMPLE && freqs[i] > counters[k]) k++;
             if (k == 0) continue;
             k--;
@@ -7863,9 +7872,9 @@ static void findHotKeys(void) {
 
     /* We're done */
     printf("\n-------- summary -------\n\n");
-
+    // 打印采样数量
     printf("Sampled %llu keys in the keyspace!\n", sampled);
-
+    // 打印 热key
     for (i=1; i<= HOTKEYS_SAMPLE; i++) {
         k = HOTKEYS_SAMPLE - i;
         if(counters[k]>0) {
@@ -8257,7 +8266,7 @@ int main(int argc, char **argv) {
     config.lru_test_mode = 0;
     // 指定测试样例大小
     config.lru_test_sample_size = 0;
-    //
+    // 集群开关
     config.cluster_mode = 0;
     // ？？？ --slave， --replica， --stat，--scan
     // 都会让 slave_mode = 1
@@ -8291,16 +8300,23 @@ int main(int argc, char **argv) {
     config.askpass = 0;
     // 验证用户
     config.user = NULL;
-    //
+    // lua 脚本
     config.eval = NULL;
+    // 开启 lua 脚本调试
     config.eval_ldb = 0;
+    //
     config.eval_ldb_end = 0;
+    // 同步 lua脚本调试
     config.eval_ldb_sync = 0;
+    //
     config.enable_ldb_on_eval = 0;
+    //
     config.last_cmd_type = -1;
+    // 详细模式？？
     config.verbose = 0;
+    // 返回错误代码开关
     config.set_errcode = 0;
-    // 命令行 使用密码时不出现警告？/？？？
+    // 密码验证警告开关
     config.no_auth_warning = 0;
     config.in_multi = 0;
     config.cluster_manager_command.name = NULL;
@@ -8356,6 +8372,8 @@ int main(int argc, char **argv) {
     argv += firstarg;
 
     // 解析环境变量
+    // REDIS_CLI_AUTH_ENV
+    // REDIS_CLI_CLUSTER_YES_ENV
     parseEnv();
 
     // 命令行提示输入密码
@@ -8379,7 +8397,7 @@ int main(int argc, char **argv) {
 #endif
 
     gettimeofday(&tv, NULL);
-    // 初始化向量数组
+    // 初始化随机数种子数组
     init_genrand64(((long long) tv.tv_sec * 1000000 + tv.tv_usec) ^ getpid());
 
     /* Cluster Manager mode */
@@ -8443,6 +8461,7 @@ int main(int argc, char **argv) {
     }
 
     /* Find hot keys */
+    // 查热键
     if (config.hotkeys) {
         if (cliConnect(0) == REDIS_ERR) exit(1);
         findHotKeys();
