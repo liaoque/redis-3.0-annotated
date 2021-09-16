@@ -281,6 +281,10 @@ static void cliPushHandler(void *, void *);
 
 uint16_t crc16(const char *buf, int len);
 
+/**
+ * 返回微妙
+ * @return
+ */
 static long long ustime(void) {
     struct timeval tv;
     long long ust;
@@ -291,6 +295,10 @@ static long long ustime(void) {
     return ust;
 }
 
+/**
+ * 返回毫秒
+ * @return
+ */
 static long long mstime(void) {
     return ustime()/1000;
 }
@@ -1314,6 +1322,8 @@ static int cliReadReply(int output_raw_strings) {
     }
 
     if (output) {
+        // 解析 服务端返回数据
+        // 向 标准输出 写入 out
         out = cliFormatReply(reply, config.output, output_raw_strings);
         fwrite(out,sdslen(out),1,stdout);
         sdsfree(out);
@@ -6791,6 +6801,16 @@ static void latencyModePrint(long long min, long long max, double avg, long long
 
 #define LATENCY_SAMPLE_RATE 10 /* milliseconds. */
 #define LATENCY_HISTORY_DEFAULT_INTERVAL 15000 /* milliseconds. */
+/**
+ * 采样统计
+ * 目前会采取3种模式统计
+ * 1. 一次性采样
+ *  非标准输入输出模式下，未开启历史采样
+ * 2. 周期采样
+ *  开启历史采样，会按照默认 15000 毫秒作为一个周期
+ * 3. 持续采样
+ *  标准输入输出模式下，未开启历史采样
+ */
 static void latencyMode(void) {
     redisReply *reply;
     long long start, latency, min = 0, max = 0, tot = 0, count = 0;
@@ -6834,13 +6854,20 @@ static void latencyMode(void) {
             latencyModePrint(min,max,avg,count);
         } else {
             if (config.latency_history) {
+                // 每次ping都打印
                 latencyModePrint(min,max,avg,count);
             } else if (mstime()-history_start > config.interval) {
+                // 超过设置时间就结束
+                // 毫秒 - 毫秒 > 微妙
+                // 假设config.interval = 1000000 微妙
+                // mstime()-history_start
+                // 统计时间要大于 100万毫秒 = 1000秒 = 16.666分钟
                 latencyModePrint(min,max,avg,count);
                 exit(0);
             }
         }
 
+        // 默认采样15秒作为一个周期，打印
         if (config.latency_history && mstime()-history_start > history_interval)
         {
             printf(" -- %.2f seconds range\n", (float)(mstime()-history_start)/1000);
@@ -6885,6 +6912,7 @@ void showLatencyDistSamples(struct distsamples *samples, long long tot) {
      * pollute the visualization with non-latency related info. */
     printf("\033[38;5;0m"); /* Set foreground color to black. */
     for (j = 0; ; j++) {
+        //
         int coloridx =
             ceil((double) samples[j].count / tot * (spectrum_palette_size-1));
         int color = spectrum_palette[coloridx];
@@ -6974,6 +7002,7 @@ static void latencyDistMode(void) {
         count++;
 
         /* Populate the relevant bucket. */
+        // 延迟 《 样本数据。最大延迟，  样本数据.count++
         for (j = 0; ; j++) {
             if (samples[j].max == 0 || latency <= samples[j].max) {
                 samples[j].count++;
@@ -6983,8 +7012,13 @@ static void latencyDistMode(void) {
 
         /* From time to time show the spectrum. */
         if (count && (ustime()-history_start)/1000 > history_interval) {
-            if ((outputs++ % 20) == 0)
+            // 到达计算周期
+            if ((outputs++ % 20) == 0){
+                // 打印参数说明
+                // 比如：A代表 10毫秒
                 showLatencyDistLegend();
+            }
+            // 打印带颜色的百分比，可以理解成类似 饼图
             showLatencyDistSamples(samples,count);
             history_start = ustime();
             count = 0;
@@ -7033,6 +7067,8 @@ static ssize_t readConn(redisContext *c, char *buf, size_t len)
 /* Sends SYNC and reads the number of bytes in the payload. Used both by
  * slaveMode() and getRDB().
  * returns 0 in case an EOF marker is used. */
+// 发送同步命令，获取同步的字节数
+// 如果获取的是eof，表示要同步大量数据，直到 遇到eof的结束符号为止
 unsigned long long sendSync(redisContext *c, char *out_eof) {
     /* To start we need to send the SYNC command and return the payload.
      * The hiredis client lib does not understand this part of the protocol
@@ -7067,6 +7103,8 @@ unsigned long long sendSync(redisContext *c, char *out_eof) {
         memcpy(out_eof, buf+5, RDB_EOF_MARK_SIZE);
         return 0;
     }
+    // https://www.cnblogs.com/the-tops/p/5886173.html
+    // 转成常整型
     return strtoull(buf+1,NULL,10);
 }
 
@@ -7079,8 +7117,10 @@ static void slaveMode(void) {
     int original_output = config.output;
 
     if (payload == 0) {
+        // 返回的是eof标记
         payload = ULLONG_MAX;
         memset(lastbytes,0,RDB_EOF_MARK_SIZE);
+        // 使用标记来判断是否同步结束
         usemark = 1;
         fprintf(stderr,"SYNC with master, discarding "
                        "bytes of bulk transfer until EOF marker...\n");
@@ -7091,6 +7131,7 @@ static void slaveMode(void) {
 
 
     /* Discard the payload. */
+    // 读取并忽略 payload个字节
     while(payload) {
         ssize_t nread;
 
@@ -7110,22 +7151,28 @@ static void slaveMode(void) {
                 memmove(lastbytes,lastbytes+nread,rem);
                 memcpy(lastbytes+rem,buf,nread);
             }
+            // 判断是否读到结束标记
             if (memcmp(lastbytes,eofmark,RDB_EOF_MARK_SIZE) == 0)
                 break;
         }
     }
 
     if (usemark) {
+        // 计算获取实际 忽略的 字节数
         unsigned long long offset = ULLONG_MAX - payload;
         fprintf(stderr,"SYNC done after %llu bytes. Logging commands from master.\n", offset);
         /* put the slave online */
         sleep(1);
+        // 确认回复
         sendReplconf("ACK", "0");
     } else
         fprintf(stderr,"SYNC done. Logging commands from master.\n");
 
     /* Now we can use hiredis to read the incoming protocol. */
     config.output = OUTPUT_CSV;
+    // ？？回复 正常就死循环？
+    // 这是要断开链接的意思？？
+    // 用csv 格式解析相应？？？
     while (cliReadReply(0) == REDIS_OK);
     config.output = original_output;
 }
@@ -8209,13 +8256,16 @@ static void intrinsicLatencyMode(void) {
             printf("Max latency so far: %lld microseconds.\n", max_latency);
         }
 
+        // 平均时间 = 总时间/ 运行次数
         double avg_us = (double)run_time/runs;
         double avg_ns = avg_us * 1e3;
         if (force_cancel_loop || end > test_end) {
+            // 运行了runs 次，每次平均毫秒/那秒
             printf("\n%lld total runs "
                 "(avg latency: "
                 "%.4f microseconds / %.2f nanoseconds per run).\n",
                 runs, avg_us, avg_ns);
+            // 最差运行时间/平均运行时间
             printf("Worst run took %.0fx longer than the average latency.\n",
                 max_latency / avg_us);
             exit(0);
@@ -8255,20 +8305,22 @@ int main(int argc, char **argv) {
     config.shutdown = 0;
     config.monitor_mode = 0;
     config.pubsub_mode = 0;
-    // 采样？？？
+    // 延迟采样，使用ping命令测试延迟
+    // 计算的是延迟采样
     config.latency_mode = 0;
     // 采样距离 配合 interactive 使用 ？？？
     config.latency_dist_mode = 0;
-    // 延迟历史记录 ？？？
+    // 开启后每个
     // 该参数强制 latency_mode = 1
     config.latency_history = 0;
-    // lua 测试负载， 2/8分布？？？
+    // lru 测试负载， 2/8分布？？？
     config.lru_test_mode = 0;
     // 指定测试样例大小
     config.lru_test_sample_size = 0;
     // 集群开关
     config.cluster_mode = 0;
     // ？？？ --slave， --replica， --stat，--scan
+    // 从模式/？？
     // 都会让 slave_mode = 1
     config.slave_mode = 0;
     // 开启/关闭 rdb模式，指定rdb文件名
@@ -8410,12 +8462,14 @@ int main(int argc, char **argv) {
     }
 
     /* Latency mode */
+    // 延迟采样
     if (config.latency_mode) {
         if (cliConnect(0) == REDIS_ERR) exit(1);
         latencyMode();
     }
 
     /* Latency distribution mode */
+    // 采样 分段显示结果
     if (config.latency_dist_mode) {
         if (cliConnect(0) == REDIS_ERR) exit(1);
         latencyDistMode();
@@ -8424,7 +8478,9 @@ int main(int argc, char **argv) {
     /* Slave mode */
     if (config.slave_mode) {
         if (cliConnect(0) == REDIS_ERR) exit(1);
+        // ？？？
         sendCapa();
+        // 主从？
         slaveMode();
     }
 
@@ -8475,6 +8531,7 @@ int main(int argc, char **argv) {
     }
 
     /* Scan mode */
+    // scan 打印所有键
     if (config.scan_mode) {
         if (cliConnect(0) == REDIS_ERR) exit(1);
         scanMode();
@@ -8487,6 +8544,8 @@ int main(int argc, char **argv) {
     }
 
     /* Intrinsic latency mode */
+    // 内部延迟模式
+    // 测试当前服务器，在密集计算下的性能？
     if (config.intrinsic_latency_mode) intrinsicLatencyMode();
 
     /* Start interactive mode when no command is provided */
