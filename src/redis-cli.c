@@ -8288,9 +8288,20 @@ static sds askPassword(const char *msg) {
  *--------------------------------------------------------------------------- */
 
 int main(int argc, char **argv) {
+//    unsigned long s =  (unsigned long)(~0);
+//    memset(&config.sslconfig, 0, sizeof(config.sslconfig));
+//    // 	'redis://[[<username> ":"] <password> "@"] [<hostname> [":" <port>]]["/" [<db>]]'
+//    parseRedisUri("redis://wlw:123456@127.0.0.1:3306/1");
+//    parseRedisUri("redis://127.0.0.1:3306/1");
+//    parseRedisUri("redis://127.0.0.1:3306/");
+
+
+
+//    printf("%lld", strtoll("q0xaq", NULL, 16));
+//    exit(0);
+
     int firstarg;
     struct timeval tv;
-
     memset(&config.sslconfig, 0, sizeof(config.sslconfig));
     config.hostip = sdsnew("127.0.0.1");
     config.hostport = 6379;
@@ -8540,6 +8551,9 @@ int main(int argc, char **argv) {
     /* LRU test mode */
     if (config.lru_test_mode) {
         if (cliConnect(0) == REDIS_ERR) exit(1);
+//        1秒钟作为1周期，进行读写，打印命中和失败的百分比
+//模拟具有80-20分布的缓存工作负载？？？ 不太明白这句话的意思
+// 还有为什么起名字叫做LRU
         LRUTestMode();
     }
 

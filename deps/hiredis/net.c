@@ -130,20 +130,24 @@ static int redisCreateSocket(redisContext *c, int type) {
 
 static int redisSetBlocking(redisContext *c, int blocking) {
 #ifndef _WIN32
+    // 非 win32
     int flags;
 
     /* Set the socket nonblocking.
      * Note that fcntl(2) for F_GETFL and F_SETFL can't be
      * interrupted by a signal. */
+//    https://blog.csdn.net/fengxinlinux/article/details/51980837
+//https://blog.csdn.net/linking530/article/details/7205305?
+//获取文件打开方式的标志，标志值含义与open调用一致
     if ((flags = fcntl(c->fd, F_GETFL)) == -1) {
         __redisSetErrorFromErrno(c,REDIS_ERR_IO,"fcntl(F_GETFL)");
         redisNetClose(c);
         return REDIS_ERR;
     }
 
-    if (blocking)
+    if (blocking) /* 取消文件的某个flags，比如文件是非阻塞的，想设置成为阻塞: */
         flags &= ~O_NONBLOCK;
-    else
+    else    /* 增加文件的某个flags，比如文件是阻塞的，想设置成非阻塞: */
         flags |= O_NONBLOCK;
 
     if (fcntl(c->fd, F_SETFL, flags) == -1) {
@@ -203,6 +207,7 @@ int redisKeepAlive(redisContext *c, int interval) {
     return REDIS_OK;
 }
 
+// 开启tcp小包，就意味着禁用了Nagle算法，
 int redisSetTcpNoDelay(redisContext *c) {
     int yes = 1;
     if (setsockopt(c->fd, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(yes)) == -1) {
@@ -238,6 +243,7 @@ static int redisContextTimeoutMsec(redisContext *c, long *result)
     return REDIS_OK;
 }
 
+// 检测链接是否成功
 static int redisContextWaitReady(redisContext *c, long msec) {
     struct pollfd   wfd[1];
 
@@ -247,17 +253,20 @@ static int redisContextWaitReady(redisContext *c, long msec) {
     if (errno == EINPROGRESS) {
         int res;
 
+        // 获取 wfd 中可读的 链接
         if ((res = poll(wfd, 1, msec)) == -1) {
             __redisSetErrorFromErrno(c, REDIS_ERR_IO, "poll(2)");
             redisNetClose(c);
             return REDIS_ERR;
         } else if (res == 0) {
+            /* Operation timed out */
             errno = ETIMEDOUT;
             __redisSetErrorFromErrno(c,REDIS_ERR_IO,NULL);
             redisNetClose(c);
             return REDIS_ERR;
         }
 
+        // 检测链接是否成功
         if (redisCheckConnectDone(c, &res) != REDIS_OK || res == 0) {
             redisCheckSocketError(c);
             return REDIS_ERR;
@@ -271,19 +280,30 @@ static int redisContextWaitReady(redisContext *c, long msec) {
     return REDIS_ERR;
 }
 
+/**
+ *
+ * @param c
+ * @param completed 0 表示链接中， 1表示链接完成
+ * @return REDIS_OK 表示链接成功
+ */
 int redisCheckConnectDone(redisContext *c, int *completed) {
     int rc = connect(c->fd, (const struct sockaddr *)c->saddr, c->addrlen);
     if (rc == 0) {
+        // 链接成功
         *completed = 1;
         return REDIS_OK;
     }
     switch (errno) {
     case EISCONN:
+        // 已经链接完成
         *completed = 1;
         return REDIS_OK;
     case EALREADY:
+//        套接字为非阻塞套接字，并且原来的连接请求还未完成。
     case EINPROGRESS:
+        //        套接字为非阻塞套接字，且连接请求没有立即完成。
     case EWOULDBLOCK:
+        //        没有足够空闲的本地端口。
         *completed = 0;
         return REDIS_OK;
     default:
@@ -367,7 +387,9 @@ static int _redisContextConnectTcp(redisContext *c, const char *addr, int port,
     int rv, n;
     char _port[6];  /* strlen("65535"); */
     struct addrinfo hints, *servinfo, *bservinfo, *p, *b;
+    // 获取当前标志位 是否阻塞
     int blocking = (c->flags & REDIS_BLOCK);
+    //  获取当前标志位 是否复用地址
     int reuseaddr = (c->flags & REDIS_REUSEADDR);
     int reuses = 0;
     long timeout_msec = -1;
@@ -383,7 +405,9 @@ static int _redisContextConnectTcp(redisContext *c, const char *addr, int port,
      *
      * This is a bit ugly, but atleast it works and doesn't leak memory.
      **/
+    // 初始化host
     if (c->tcp.host != addr) {
+        // 链接host 未指定或者不相同
         hi_free(c->tcp.host);
 
         c->tcp.host = hi_strdup(addr);
@@ -391,6 +415,7 @@ static int _redisContextConnectTcp(redisContext *c, const char *addr, int port,
             goto oom;
     }
 
+    // 初始化超时时间
     if (timeout) {
         if (redisContextUpdateConnectTimeout(c, timeout) == REDIS_ERR)
             goto oom;
@@ -400,10 +425,12 @@ static int _redisContextConnectTcp(redisContext *c, const char *addr, int port,
     }
 
     if (redisContextTimeoutMsec(c, &timeout_msec) != REDIS_OK) {
+        // 超时时间不正确
         __redisSetError(c, REDIS_ERR_IO, "Invalid timeout specified");
         goto error;
     }
 
+    // 初始化链接原地址
     if (source_addr == NULL) {
         hi_free(c->tcp.source_addr);
         c->tcp.source_addr = NULL;
@@ -412,7 +439,10 @@ static int _redisContextConnectTcp(redisContext *c, const char *addr, int port,
         c->tcp.source_addr = hi_strdup(source_addr);
     }
 
+    // 初始化目标端口
     snprintf(_port, 6, "%d", port);
+
+    // 设置目标 地址解析方式
     memset(&hints,0,sizeof(hints));
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
@@ -422,6 +452,7 @@ static int _redisContextConnectTcp(redisContext *c, const char *addr, int port,
      * as this would add latency to every connect. Otherwise a more sensible
      * route could be: Use IPv6 if both addresses are available and there is IPv6
      * connectivity. */
+    // 解析目标地址， 获取地址信息
     if ((rv = getaddrinfo(c->tcp.host,_port,&hints,&servinfo)) != 0) {
          hints.ai_family = AF_INET6;
          if ((rv = getaddrinfo(addr,_port,&hints,&servinfo)) != 0) {
@@ -431,15 +462,18 @@ static int _redisContextConnectTcp(redisContext *c, const char *addr, int port,
     }
     for (p = servinfo; p != NULL; p = p->ai_next) {
 addrretry:
+        // 套接字创建失败
         if ((s = socket(p->ai_family,p->ai_socktype,p->ai_protocol)) == REDIS_INVALID_FD)
             continue;
 
         c->fd = s;
+        // 设置套接字 非阻塞
         if (redisSetBlocking(c,0) != REDIS_OK)
             goto error;
         if (c->tcp.source_addr) {
             int bound = 0;
             /* Using getaddrinfo saves us from self-determining IPv4 vs IPv6 */
+            // 解析本机地址信息
             if ((rv = getaddrinfo(c->tcp.source_addr, NULL, &hints, &bservinfo)) != 0) {
                 char buf[128];
                 snprintf(buf,sizeof(buf),"Can't get addr: %s",gai_strerror(rv));
@@ -480,20 +514,29 @@ addrretry:
         memcpy(c->saddr, p->ai_addr, p->ai_addrlen);
         c->addrlen = p->ai_addrlen;
 
+        // 链接目标地址
         if (connect(s,p->ai_addr,p->ai_addrlen) == -1) {
             if (errno == EHOSTUNREACH) {
+                // 无法匹配到 路由表，或者无法找到目标地址
                 redisNetClose(c);
                 continue;
             } else if (errno == EINPROGRESS) {
+//                连接还在进行中。
                 if (blocking) {
                     goto wait_for_ready;
                 }
+                // 那么就代表连接还在进行中。
+                // 后面可以通过poll或者select来判断socket是否可写，
+                // 如果可以写，说明连接完成了。
                 /* This is ok.
                  * Note that even when it's in blocking mode, we unset blocking
                  * for `connect()`
                  */
             } else if (errno == EADDRNOTAVAIL && reuseaddr) {
+                //   /* Can't assign requested address */ 无法分配地址
+                // 端口被占用，内存不足，等情况
                 if (++reuses >= REDIS_CONNECT_RETRIES) {
+                    // 重试10 报错
                     goto error;
                 } else {
                     redisNetClose(c);
@@ -501,15 +544,20 @@ addrretry:
                 }
             } else {
                 wait_for_ready:
+                // 链接失败， error
                 if (redisContextWaitReady(c,timeout_msec) != REDIS_OK)
                     goto error;
+                // 禁用了Nagle算法，允许小包传输
                 if (redisSetTcpNoDelay(c) != REDIS_OK)
                     goto error;
             }
         }
+
+        // 原链接标志 阻塞，恢复套接字阻塞状态
         if (blocking && redisSetBlocking(c,1) != REDIS_OK)
             goto error;
 
+        // 设置标志位，表示链接成功
         c->flags |= REDIS_CONNECTED;
         rv = REDIS_OK;
         goto end;
