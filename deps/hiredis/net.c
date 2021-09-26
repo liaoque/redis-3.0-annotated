@@ -259,6 +259,7 @@ static int redisContextWaitReady(redisContext *c, long msec) {
             redisNetClose(c);
             return REDIS_ERR;
         } else if (res == 0) {
+            // 获取超时
             /* Operation timed out */
             errno = ETIMEDOUT;
             __redisSetErrorFromErrno(c,REDIS_ERR_IO,NULL);
@@ -333,9 +334,15 @@ int redisCheckSocketError(redisContext *c) {
     return REDIS_OK;
 }
 
+// 设置套接字 读写时间 超时时间
 int redisContextSetTimeout(redisContext *c, const struct timeval tv) {
     const void *to_ptr = &tv;
     size_t to_sz = sizeof(tv);
+
+//    SO_RCVTIMEO和SO_SNDTIMEO ，它们分别用来设置socket接收数据超时时间和发送数据超时时间。
+//    因此，这两个选项仅对与数据收发相关的系统调用有效，这些系统调用包括：send, sendmsg, recv, recvmsg, accept, connect 。
+//    这两个选项设置后，若超时， 返回-1，并设置errno为EAGAIN或EWOULDBLOCK.
+//    其中connect超时的话，也是返回-1, 但errno设置为EINPROGRESS
 
     if (setsockopt(c->fd,SOL_SOCKET,SO_RCVTIMEO,to_ptr,to_sz) == -1) {
         __redisSetErrorFromErrno(c,REDIS_ERR_IO,"setsockopt(SO_RCVTIMEO)");
@@ -348,6 +355,7 @@ int redisContextSetTimeout(redisContext *c, const struct timeval tv) {
     return REDIS_OK;
 }
 
+// 设置链接超时间时间
 int redisContextUpdateConnectTimeout(redisContext *c, const struct timeval *timeout) {
     /* Same timeval struct, short circuit */
     if (c->connect_timeout == timeout)
@@ -364,6 +372,7 @@ int redisContextUpdateConnectTimeout(redisContext *c, const struct timeval *time
     return REDIS_OK;
 }
 
+// 设置命令超时时间
 int redisContextUpdateCommandTimeout(redisContext *c, const struct timeval *timeout) {
     /* Same timeval struct, short circuit */
     if (c->command_timeout == timeout)
@@ -483,6 +492,8 @@ addrretry:
 
             if (reuseaddr) {
                 n = 1;
+                // 一个端口释放后会等待两分钟之后才能再被使用，
+                // SO_REUSEADDR是让端口释放后立即就可以被再次使用。
                 if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (char*) &n,
                                sizeof(n)) < 0) {
                     freeaddrinfo(bservinfo);
@@ -490,14 +501,17 @@ addrretry:
                 }
             }
 
+            // 尝试依次对本地地址进行绑定，成功跳出
             for (b = bservinfo; b != NULL; b = b->ai_next) {
                 if (bind(s,b->ai_addr,b->ai_addrlen) != -1) {
                     bound = 1;
                     break;
                 }
             }
+            // 释放
             freeaddrinfo(bservinfo);
             if (!bound) {
+                // 绑定失败
                 char buf[128];
                 snprintf(buf,sizeof(buf),"Can't bind socket: %s",strerror(errno));
                 __redisSetError(c,REDIS_ERR_OTHER,buf);
@@ -523,6 +537,8 @@ addrretry:
             } else if (errno == EINPROGRESS) {
 //                连接还在进行中。
                 if (blocking) {
+                    // 阻塞模式下会等待 直到链接成功
+                    // 非阻塞模式下就直接返回了
                     goto wait_for_ready;
                 }
                 // 那么就代表连接还在进行中。
@@ -594,12 +610,18 @@ int redisContextConnectBindTcp(redisContext *c, const char *addr, int port,
 
 int redisContextConnectUnix(redisContext *c, const char *path, const struct timeval *timeout) {
 #ifndef _WIN32
+// 非 win32
+
+    // 是否是阻塞模式
     int blocking = (c->flags & REDIS_BLOCK);
     struct sockaddr_un *sa;
     long timeout_msec = -1;
 
+    // 创建要接字
     if (redisCreateSocket(c,AF_UNIX) < 0)
         return REDIS_ERR;
+
+    // 设置成非阻塞模式
     if (redisSetBlocking(c,0) != REDIS_OK)
         return REDIS_ERR;
 
@@ -613,6 +635,7 @@ int redisContextConnectUnix(redisContext *c, const char *path, const struct time
     }
 
     if (timeout) {
+        // 设置联检超时
         if (redisContextUpdateConnectTimeout(c, timeout) == REDIS_ERR)
             goto oom;
     } else {
@@ -620,6 +643,7 @@ int redisContextConnectUnix(redisContext *c, const char *path, const struct time
         c->connect_timeout = NULL;
     }
 
+    // 检查是否超过最大时间
     if (redisContextTimeoutMsec(c,&timeout_msec) != REDIS_OK)
         return REDIS_ERR;
 
@@ -635,14 +659,17 @@ int redisContextConnectUnix(redisContext *c, const char *path, const struct time
     strncpy(sa->sun_path, path, sizeof(sa->sun_path) - 1);
     if (connect(c->fd, (struct sockaddr*)sa, sizeof(*sa)) == -1) {
         if (errno == EINPROGRESS && !blocking) {
+            // 非阻塞直接返回
             /* This is ok. */
         } else {
+            // 阻塞模式
             if (redisContextWaitReady(c,timeout_msec) != REDIS_OK)
                 return REDIS_ERR;
         }
     }
 
     /* Reset socket to be blocking after connect(2). */
+    // 恢复成组赛模式
     if (blocking && redisSetBlocking(c,1) != REDIS_OK)
         return REDIS_ERR;
 

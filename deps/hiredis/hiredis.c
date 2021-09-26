@@ -122,6 +122,7 @@ static void *createStringObject(const redisReadTask *task, char *str, size_t len
     redisReply *r, *parent;
     char *buf;
 
+    //  创建应答对象
     r = createReplyObject(task->type);
     if (r == NULL)
         return NULL;
@@ -135,9 +136,12 @@ static void *createStringObject(const redisReadTask *task, char *str, size_t len
     if (task->type == REDIS_REPLY_VERB) {
         buf = hi_malloc(len-4+1); /* Skip 4 bytes of verbatim type header. */
         if (buf == NULL) goto oom;
-
+//        ？？
+//      截断赋值
         memcpy(r->vtype,str,3);
         r->vtype[3] = '\0';
+
+//      截取中间部分
         memcpy(buf,str+4,len-4);
         buf[len-4] = '\0';
         r->len = len - 4;
@@ -152,6 +156,7 @@ static void *createStringObject(const redisReadTask *task, char *str, size_t len
     r->str = buf;
 
     if (task->parent) {
+        // ？？ 暂未知对象
         parent = task->parent->obj;
         assert(parent->type == REDIS_REPLY_ARRAY ||
                parent->type == REDIS_REPLY_MAP ||
@@ -680,10 +685,12 @@ void __redisSetError(redisContext *c, int type, const char *str) {
     }
 }
 
+// 创建 redisReader 对象
 redisReader *redisReaderCreate(void) {
     return redisReaderCreateWithFunctions(&defaultFunctions);
 }
 
+// 自动释放
 static void redisPushAutoFree(void *privdata, void *reply) {
     (void)privdata;
     freeReplyObject(reply);
@@ -696,10 +703,15 @@ static redisContext *redisContextInit(void) {
     if (c == NULL)
         return NULL;
 
+    // 挂载 同步读写，异步读写方法
     c->funcs = &redisContextDefaultFuncs;
 
+    // 初始化
     c->obuf = hi_sdsempty();
+
+    // 创建读 对象
     c->reader = redisReaderCreate();
+    // 初始化套接字
     c->fd = REDIS_INVALID_FD;
 
     if (c->obuf == NULL || c->reader == NULL) {
@@ -784,28 +796,37 @@ int redisReconnect(redisContext *c) {
 }
 
 redisContext *redisConnectWithOptions(const redisOptions *options) {
+    // 创建redis 上下文对象
     redisContext *c = redisContextInit();
     if (c == NULL) {
         return NULL;
     }
     if (!(options->options & REDIS_OPT_NONBLOCK)) {
+        // 设置 阻塞模式
         c->flags |= REDIS_BLOCK;
     }
     if (options->options & REDIS_OPT_REUSEADDR) {
+        // 设置 复用地址
         c->flags |= REDIS_REUSEADDR;
     }
     if (options->options & REDIS_OPT_NOAUTOFREE) {
+        // 不自动释放
         c->flags |= REDIS_NO_AUTO_FREE;
     }
 
     /* Set any user supplied RESP3 PUSH handler or use freeReplyObject
      * as a default unless specifically flagged that we don't want one. */
+    // 设置推送服务
+    // 优先 options->push_cb
+    // 其次 设置自动释放的前提下，设置 redisPushAutoFree
     if (options->push_cb != NULL)
         redisSetPushCallback(c, options->push_cb);
     else if (!(options->options & REDIS_OPT_NO_PUSH_AUTOFREE))
         redisSetPushCallback(c, redisPushAutoFree);
 
+    // 构造函数
     c->privdata = options->privdata;
+    // 析构函数
     c->free_privdata = options->free_privdata;
 
     if (redisContextUpdateConnectTimeout(c, options->connect_timeout) != REDIS_OK ||
@@ -815,21 +836,26 @@ redisContext *redisConnectWithOptions(const redisOptions *options) {
     }
 
     if (options->type == REDIS_CONN_TCP) {
+        // tcp链接
         redisContextConnectBindTcp(c, options->endpoint.tcp.ip,
                                    options->endpoint.tcp.port, options->connect_timeout,
                                    options->endpoint.tcp.source_addr);
     } else if (options->type == REDIS_CONN_UNIX) {
+        // 套接字链接
         redisContextConnectUnix(c, options->endpoint.unix_socket,
                                 options->connect_timeout);
     } else if (options->type == REDIS_CONN_USERFD) {
+        // 链接复用F
         c->fd = options->endpoint.fd;
+        // 设置已经链接完成
         c->flags |= REDIS_CONNECTED;
     } else {
         // Unknown type - FIXME - FREE
         return NULL;
     }
 
-    if (options->command_timeout != NULL && (c->flags & REDIS_BLOCK) && c->fd != REDIS_INVALID_FD) {
+    // 设置套接字 读写时间 超时时间
+    if (options->command_timeout != NULL &&(c->flags & REDIS_BLOCK) &&c->fd != REDIS_INVALID_FD) {
         redisContextSetTimeout(c, *options->command_timeout);
     }
 
@@ -840,8 +866,11 @@ redisContext *redisConnectWithOptions(const redisOptions *options) {
  * context will be set to the return value of the error function.
  * When no set of reply functions is given, the default set will be used. */
 redisContext *redisConnect(const char *ip, int port) {
+    // 创建redis属性对象
     redisOptions options = {0};
+    // 设置 以tcp方式链接
     REDIS_OPTIONS_SET_TCP(&options, ip, port);
+    // 创建redis上下文对象
     return redisConnectWithOptions(&options);
 }
 
@@ -919,6 +948,7 @@ int redisEnableKeepAlive(redisContext *c) {
 }
 
 /* Set a user provided RESP3 PUSH handler and return any old one set. */
+// 替换新的 RESP3 处理函数， 返回旧的
 redisPushFn *redisSetPushCallback(redisContext *c, redisPushFn *fn) {
     redisPushFn *old = c->push_cb;
     c->push_cb = fn;

@@ -77,6 +77,7 @@ typedef long long ssize_t;
 /* Flag that is set when monitor mode is active */
 #define REDIS_MONITORING 0x40
 
+// 标志位复用
 /* Flag that is set when we should set SO_REUSEADDR before calling bind() */
 #define REDIS_REUSEADDR 0x80
 
@@ -109,6 +110,7 @@ extern "C" {
 typedef struct redisReply {
     int type; /* REDIS_REPLY_* */
     long long integer; /* The integer when type is REDIS_REPLY_INTEGER */
+    // 类型是 REDIS_REPLY_DOUBLE， dval 保存的是值
     double dval; /* The double when type is REDIS_REPLY_DOUBLE */
     size_t len; /* Length of string */
     char *str; /* Used for REDIS_REPLY_ERROR, REDIS_REPLY_STRING
@@ -140,16 +142,20 @@ enum redisConnectionType {
 
 struct redisSsl;
 
+// 不阻塞
 #define REDIS_OPT_NONBLOCK 0x01
+// 地址复用
 #define REDIS_OPT_REUSEADDR 0x02
 
 /**
  * Don't automatically free the async object on a connection failure,
  * or other implicit conditions. Only free on an explicit call to disconnect() or free()
  */
+// 不要在连接失败或其他隐式条件下自动释放异步对象。仅在显式调用disconnect（）或free（）时可用
 #define REDIS_OPT_NOAUTOFREE 0x04
 
 /* Don't automatically intercept and free RESP3 PUSH replies. */
+// 不要自动截取和释放RESP3推送回复。
 #define REDIS_OPT_NO_PUSH_AUTOFREE 0x08
 
 /* In Unix systems a file descriptor is a regular signed int, with -1
@@ -173,8 +179,10 @@ typedef struct {
      * the type of connection to use. This also indicates which
      * `endpoint` member field to use
      */
+    // 使用哪种方式链接
     int type;
     /* bit field of REDIS_OPT_xxx */
+    // redis 设置 阻塞， 复用， 自动释放， 自动释放RESP3
     int options;
     /* timeout value for connect operation. If NULL, no timeout is used */
     const struct timeval *connect_timeout;
@@ -183,24 +191,30 @@ typedef struct {
     const struct timeval *command_timeout;
     union {
         /** use this field for tcp/ip connections */
+        // 使用tcp链接
         struct {
             const char *source_addr;
             const char *ip;
             int port;
         } tcp;
+        // 套接字链接
         /** use this field for unix domain sockets */
         const char *unix_socket;
         /**
          * use this field to have hiredis operate an already-open
          * file descriptor */
+         // 套接字标识符
         redisFD fd;
     } endpoint;
 
     /* Optional user defined data/destructor */
+    // 构造函数
     void *privdata;
+    // 析构函数
     void (*free_privdata)(void *);
 
     /* A user defined PUSH message callback */
+    // 用户定义的推送消息回调
     redisPushFn *push_cb;
     redisAsyncPushFn *async_push_cb;
 } redisOptions;

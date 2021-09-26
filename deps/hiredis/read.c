@@ -613,18 +613,23 @@ redisReader *redisReaderCreateWithFunctions(redisReplyObjectFunctions *fn) {
     if (r->buf == NULL)
         goto oom;
 
+    // 创建task 指针数组 大小， REDIS_READER_STACK_SIZE 9
     r->task = hi_calloc(REDIS_READER_STACK_SIZE, sizeof(*r->task));
     if (r->task == NULL)
         goto oom;
 
+    // 初始化 *task 数组的 指针
     for (; r->tasks < REDIS_READER_STACK_SIZE; r->tasks++) {
         r->task[r->tasks] = hi_calloc(1, sizeof(**r->task));
         if (r->task[r->tasks] == NULL)
             goto oom;
     }
 
+    // 动态挂载 默认的 回复 方法
     r->fn = fn;
+    // 最大缓冲 1024 *16
     r->maxbuf = REDIS_READER_MAX_BUF;
+    // 最大元素个数 42 9496 7295
     r->maxelements = REDIS_READER_MAX_ARRAY_ELEMENTS;
     r->ridx = -1;
 

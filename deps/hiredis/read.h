@@ -61,6 +61,7 @@
 #define REDIS_REPLY_ATTR 11
 #define REDIS_REPLY_PUSH 12
 #define REDIS_REPLY_BIGNUM 13
+//
 #define REDIS_REPLY_VERB 14
 
 /* Default max unused reader buffer. */
@@ -74,9 +75,13 @@ extern "C" {
 #endif
 
 typedef struct redisReadTask {
+    //
     int type;
+    //
     long long elements; /* number of elements in multibulk container */
+    //
     int idx; /* index in parent (array) object */
+    //
     void *obj; /* holds user-generated value for a read task */
     struct redisReadTask *parent; /* parent task */
     void *privdata; /* user-settable arbitrary field */

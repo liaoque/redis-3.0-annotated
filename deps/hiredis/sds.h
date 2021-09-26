@@ -54,8 +54,11 @@ struct __attribute__ ((__packed__)) hisdshdr5 {
     char buf[];
 };
 struct __attribute__ ((__packed__)) hisdshdr8 {
+    // 缓存长度
     uint8_t len; /* used */
+
     uint8_t alloc; /* excluding the header and null terminator */
+    // 标志位，表示 类型
     unsigned char flags; /* 3 lsb of type, 5 unused bits */
     char buf[];
 };
@@ -106,6 +109,7 @@ static inline size_t hi_sdslen(const hisds s) {
     return 0;
 }
 
+// 获取类型，并返回
 static inline size_t hi_sdsavail(const hisds s) {
     unsigned char flags = s[-1];
     switch(flags&HI_SDS_TYPE_MASK) {
