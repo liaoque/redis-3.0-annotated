@@ -245,43 +245,57 @@ typedef struct redisContextFuncs {
 
 /* Context for a connection to Redis */
 typedef struct redisContext {
+    // 读写处理函数
     const redisContextFuncs *funcs;   /* Function table */
 
+    // 错误代码
     int err; /* Error flags, 0 when there is no error */
+    // 错误信息
     char errstr[128]; /* String representation of error when applicable */
+    // 套接字
     redisFD fd;
+    // 链接标志，参考 redisOptions
     int flags;
+    //
     char *obuf; /* Write buffer */
     redisReader *reader; /* Protocol reader */
-
+    // 链接类型
     enum redisConnectionType connection_type;
+    // 超时时间
     struct timeval *connect_timeout;
     struct timeval *command_timeout;
 
+    // tcp 目标
     struct {
         char *host;
         char *source_addr;
         int port;
     } tcp;
 
+    // unix
     struct {
         char *path;
     } unix_sock;
 
     /* For non-blocking connect */
+    // 解析链接目标地址的结果
     struct sockadr *saddr;
+    // 解析后地址长度
     size_t addrlen;
 
     /* Optional data and corresponding destructor users can use to provide
      * context to a given redisContext.  Not used by hiredis. */
+    // 构造和析构函数
     void *privdata;
     void (*free_privdata)(void *);
 
     /* Internal context pointer presently used by hiredis to manage
      * SSL connections. */
+    // ssl
     void *privctx;
 
     /* An optional RESP3 PUSH handler */
+    // 用户定义的推送消息回调
     redisPushFn *push_cb;
 } redisContext;
 
