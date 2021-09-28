@@ -54,12 +54,13 @@ struct __attribute__ ((__packed__)) hisdshdr5 {
     char buf[];
 };
 struct __attribute__ ((__packed__)) hisdshdr8 {
-    // 缓存长度
+    // buf 缓冲实际存储字符串的大小
     uint8_t len; /* used */
-
+    // buf 缓冲区的总大小
     uint8_t alloc; /* excluding the header and null terminator */
     // 标志位，表示 类型
     unsigned char flags; /* 3 lsb of type, 5 unused bits */
+    //
     char buf[];
 };
 struct __attribute__ ((__packed__)) hisdshdr16 {
@@ -92,24 +93,30 @@ struct __attribute__ ((__packed__)) hisdshdr64 {
 #define HI_SDS_HDR(T,s) ((struct hisdshdr##T *)((s)-(sizeof(struct hisdshdr##T))))
 #define HI_SDS_TYPE_5_LEN(f) ((f)>>HI_SDS_TYPE_BITS)
 
+// 返回sds实际数据的大小
 static inline size_t hi_sdslen(const hisds s) {
     unsigned char flags = s[-1];
     switch(flags & HI_SDS_TYPE_MASK) {
         case HI_SDS_TYPE_5:
+            // 最长长度248
             return HI_SDS_TYPE_5_LEN(flags);
         case HI_SDS_TYPE_8:
+            // 0xff
             return HI_SDS_HDR(8,s)->len;
         case HI_SDS_TYPE_16:
+            // 0xffff
             return HI_SDS_HDR(16,s)->len;
         case HI_SDS_TYPE_32:
+            // 0xffff
             return HI_SDS_HDR(32,s)->len;
         case HI_SDS_TYPE_64:
+            // 0xffffffff
             return HI_SDS_HDR(64,s)->len;
     }
     return 0;
 }
 
-// 获取类型，并返回
+// 根据类型，并返回扩展的大小
 static inline size_t hi_sdsavail(const hisds s) {
     unsigned char flags = s[-1];
     switch(flags&HI_SDS_TYPE_MASK) {
@@ -136,6 +143,7 @@ static inline size_t hi_sdsavail(const hisds s) {
     return 0;
 }
 
+// 设置 sds实际数据的大小
 static inline void hi_sdssetlen(hisds s, size_t newlen) {
     unsigned char flags = s[-1];
     switch(flags&HI_SDS_TYPE_MASK) {
@@ -160,6 +168,7 @@ static inline void hi_sdssetlen(hisds s, size_t newlen) {
     }
 }
 
+// 增加 sds实际数据的大小
 static inline void hi_sdsinclen(hisds s, size_t inc) {
     unsigned char flags = s[-1];
     switch(flags&HI_SDS_TYPE_MASK) {
@@ -186,6 +195,7 @@ static inline void hi_sdsinclen(hisds s, size_t inc) {
 }
 
 /* hi_sdsalloc() = hi_sdsavail() + hi_sdslen() */
+// 返回 alloc buf 总大小
 static inline size_t hi_sdsalloc(const hisds s) {
     unsigned char flags = s[-1];
     switch(flags & HI_SDS_TYPE_MASK) {
@@ -203,6 +213,7 @@ static inline size_t hi_sdsalloc(const hisds s) {
     return 0;
 }
 
+// 设置buf大小
 static inline void hi_sdssetalloc(hisds s, size_t newlen) {
     unsigned char flags = s[-1];
     switch(flags&HI_SDS_TYPE_MASK) {

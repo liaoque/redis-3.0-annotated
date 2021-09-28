@@ -40,6 +40,7 @@
 #include "sds.h"
 #include "sdsalloc.h"
 
+// 返回当前结构体大小
 static inline int hi_sdsHdrSize(char type) {
     switch(type&HI_SDS_TYPE_MASK) {
         case HI_SDS_TYPE_5:
@@ -56,6 +57,7 @@ static inline int hi_sdsHdrSize(char type) {
     return 0;
 }
 
+// 根据 string_size 返回对应的结构类型
 static inline char hi_sdsReqType(size_t string_size) {
     if (string_size < 32)
         return HI_SDS_TYPE_5;
@@ -180,6 +182,7 @@ void hi_sdsfree(hisds s) {
  * The output will be "2", but if we comment out the call to hi_sdsupdatelen()
  * the output will be "6" as the string was modified but the logical length
  * remains 6 bytes. */
+// 根据buf 实际字符长度， 更新sds的len属性
 void hi_sdsupdatelen(hisds s) {
     int reallen = strlen(s);
     hi_sdssetlen(s, reallen);
@@ -189,6 +192,7 @@ void hi_sdsupdatelen(hisds s) {
  * However all the existing buffer is not discarded but set as free space
  * so that next append operations will not require allocations up to the
  * number of bytes previously available. */
+// 清空 buf
 void hi_sdsclear(hisds s) {
     hi_sdssetlen(s, 0);
     s[0] = '\0';
@@ -208,16 +212,22 @@ hisds hi_sdsMakeRoomFor(hisds s, size_t addlen) {
     int hdrlen;
 
     /* Return ASAP if there is enough space left. */
+    // 扩展大小比原来的小
     if (avail >= addlen) return s;
 
     len = hi_sdslen(s);
+    // 获取结构体收地址
+    // hi_sdsHdrSize(oldtype); 获取当前结构体固定长度偏移
     sh = (char*)s-hi_sdsHdrSize(oldtype);
+    // 新扩展的胀肚
     newlen = (len+addlen);
+    // 一般情况 *2 扩展， 达到最大值后， 则按最大值扩展
     if (newlen < HI_SDS_MAX_PREALLOC)
         newlen *= 2;
     else
         newlen += HI_SDS_MAX_PREALLOC;
 
+    // 根据长度获取新的类型
     type = hi_sdsReqType(newlen);
 
     /* Don't use type 5: the user is appending to the string and type 5 is
@@ -225,22 +235,31 @@ hisds hi_sdsMakeRoomFor(hisds s, size_t addlen) {
      * at every appending operation. */
     if (type == HI_SDS_TYPE_5) type = HI_SDS_TYPE_8;
 
+    // 新类型下， 分配的结构体的固定大小
     hdrlen = hi_sdsHdrSize(type);
     if (oldtype==type) {
+        // 类型不变
+        // 扩展放大
         newsh = hi_s_realloc(sh, hdrlen+newlen+1);
         if (newsh == NULL) return NULL;
+        // 返回 实际大小的首地址
         s = (char*)newsh+hdrlen;
     } else {
         /* Since the header size changes, need to move the string forward,
          * and can't use realloc */
+        // 重新分配内存空间
         newsh = hi_s_malloc(hdrlen+newlen+1);
         if (newsh == NULL) return NULL;
+        //原来的数据拷贝过来
         memcpy((char*)newsh+hdrlen, s, len+1);
         hi_s_free(sh);
+        // 实际首地址
         s = (char*)newsh+hdrlen;
         s[-1] = type;
+        // 保存当前的实际大小
         hi_sdssetlen(s, len);
     }
+    // 总的 缓冲区的大小
     hi_sdssetalloc(s, newlen);
     return s;
 }
@@ -251,6 +270,7 @@ hisds hi_sdsMakeRoomFor(hisds s, size_t addlen) {
  *
  * After the call, the passed hisds string is no longer valid and all the
  * references must be substituted with the new pointer returned by the call. */
+// 根据 s 内实际字符串大小，来调整 sds的类型和 大小
 hisds hi_sdsRemoveFreeSpace(hisds s) {
     void *sh, *newsh;
     char type, oldtype = s[-1] & HI_SDS_TYPE_MASK;
@@ -258,13 +278,20 @@ hisds hi_sdsRemoveFreeSpace(hisds s) {
     size_t len = hi_sdslen(s);
     sh = (char*)s-hi_sdsHdrSize(oldtype);
 
+    // 根据实际数据大小返回 对应类型
     type = hi_sdsReqType(len);
     hdrlen = hi_sdsHdrSize(type);
     if (oldtype==type) {
+        // 实际数据对应的类型 和当前类型 是一致的
+        // 在sh 指向的内存中分配内存
         newsh = hi_s_realloc(sh, hdrlen+len+1);
         if (newsh == NULL) return NULL;
+        // s指向新分配的地址
         s = (char*)newsh+hdrlen;
     } else {
+        // 直接分配新类型的内存
+        // 原数据迁移到新内存
+        // s 指向新的内存地址
         newsh = hi_s_malloc(hdrlen+len+1);
         if (newsh == NULL) return NULL;
         memcpy((char*)newsh+hdrlen, s, len+1);
@@ -284,6 +311,7 @@ hisds hi_sdsRemoveFreeSpace(hisds s) {
  * 3) The free buffer at the end if any.
  * 4) The implicit null term.
  */
+// 返回sds的总大小
 size_t hi_sdsAllocSize(hisds s) {
     size_t alloc = hi_sdsalloc(s);
     return hi_sdsHdrSize(s[-1])+alloc+1;
@@ -291,6 +319,7 @@ size_t hi_sdsAllocSize(hisds s) {
 
 /* Return the pointer of the actual SDS allocation (normally SDS strings
  * are referenced by the start of the string buffer). */
+//
 void *hi_sdsAllocPtr(hisds s) {
     return (void*) (s-hi_sdsHdrSize(s[-1]));
 }
@@ -318,6 +347,7 @@ void *hi_sdsAllocPtr(hisds s) {
  * ... check for nread <= 0 and handle it ...
  * hi_sdsIncrLen(s, nread);
  */
+// 动态增加减少 s的实际字符的大小，
 void hi_sdsIncrLen(hisds s, int incr) {
     unsigned char flags = s[-1];
     size_t len;
@@ -326,13 +356,16 @@ void hi_sdsIncrLen(hisds s, int incr) {
             unsigned char *fp = ((unsigned char*)s)-1;
             unsigned char oldlen = HI_SDS_TYPE_5_LEN(flags);
             assert((incr > 0 && oldlen+incr < 32) || (incr < 0 && oldlen >= (unsigned int)(-incr)));
+            // 变更长度
             *fp = HI_SDS_TYPE_5 | ((oldlen+incr) << HI_SDS_TYPE_BITS);
             len = oldlen+incr;
             break;
         }
         case HI_SDS_TYPE_8: {
             HI_SDS_HDR_VAR(8,s);
+            // 剩余长度 》 incr
             assert((incr >= 0 && sh->alloc-sh->len >= incr) || (incr < 0 && sh->len >= (unsigned int)(-incr)));
+            // 这说明 扩充后的长度 还是 <= sh->alloc
             len = (sh->len += incr);
             break;
         }
@@ -364,6 +397,8 @@ void hi_sdsIncrLen(hisds s, int incr) {
  *
  * if the specified length is smaller than the current length, no operation
  * is performed. */
+// 设置 sds 大小 为 len， 如果 len > 当前大小,
+// 则放大，且放大部分全部初始化为0
 hisds hi_sdsgrowzero(hisds s, size_t len) {
     size_t curlen = hi_sdslen(s);
 
@@ -382,12 +417,15 @@ hisds hi_sdsgrowzero(hisds s, size_t len) {
  *
  * After the call, the passed hisds string is no longer valid and all the
  * references must be substituted with the new pointer returned by the call. */
+// 扩展 len的大小，并把t的复制到 s 的扩展后的部分
 hisds hi_sdscatlen(hisds s, const void *t, size_t len) {
     size_t curlen = hi_sdslen(s);
-
+    // 扩展 len大小
     s = hi_sdsMakeRoomFor(s,len);
     if (s == NULL) return NULL;
+    // 把t的数据，复制到 扩展的数据上
     memcpy(s+curlen, t, len);
+    // 保存实际的 数据大小
     hi_sdssetlen(s, curlen+len);
     s[curlen+len] = '\0';
     return s;
@@ -397,6 +435,7 @@ hisds hi_sdscatlen(hisds s, const void *t, size_t len) {
  *
  * After the call, the passed hisds string is no longer valid and all the
  * references must be substituted with the new pointer returned by the call. */
+// 保存t数据到 s的剩余空间 中， 如果s不够存放， 直接扩展，然后在保存
 hisds hi_sdscat(hisds s, const char *t) {
     return hi_sdscatlen(s, t, strlen(t));
 }
@@ -405,12 +444,15 @@ hisds hi_sdscat(hisds s, const char *t) {
  *
  * After the call, the modified hisds string is no longer valid and all the
  * references must be substituted with the new pointer returned by the call. */
+//保存t数据到 s 中， 如果s不够存放， 直接扩展
+// 注意 这里的t 不是全部的数据， 而是t实际存储的数据大小
 hisds hi_sdscatsds(hisds s, const hisds t) {
     return hi_sdscatlen(s, t, hi_sdslen(t));
 }
 
 /* Destructively modify the hisds string 's' to hold the specified binary
  * safe string pointed by 't' of length 'len' bytes. */
+//保存t 覆盖 s，如果s空间不足，则扩展
 hisds hi_sdscpylen(hisds s, const char *t, size_t len) {
     if (hi_sdsalloc(s) < len) {
         s = hi_sdsMakeRoomFor(s,len-hi_sdslen(s));
@@ -424,6 +466,7 @@ hisds hi_sdscpylen(hisds s, const char *t, size_t len) {
 
 /* Like hi_sdscpylen() but 't' must be a null-termined string so that the length
  * of the string is obtained with strlen(). */
+//保存t 覆盖 s，如果s空间不足，则扩展
 hisds hi_sdscpy(hisds s, const char *t) {
     return hi_sdscpylen(s, t, strlen(t));
 }
@@ -435,6 +478,7 @@ hisds hi_sdscpy(hisds s, const char *t) {
  * The function returns the length of the null-terminated string
  * representation stored at 's'. */
 #define HI_SDS_LLSTR_SIZE 21
+// 数字转字符串·
 int hi_sdsll2str(char *s, long long value) {
     char *p, aux;
     unsigned long long v;
@@ -442,6 +486,7 @@ int hi_sdsll2str(char *s, long long value) {
 
     /* Generate the string representation, this method produces
      * an reversed string. */
+    // 绝对值
     v = (value < 0) ? -value : value;
     p = s;
     do {
@@ -499,6 +544,7 @@ int hi_sdsull2str(char *s, unsigned long long v) {
  *
  * hi_sdscatprintf(hi_sdsempty(),"%lld\n", value);
  */
+// 数字转字符串。并返回sds
 hisds hi_sdsfromlonglong(long long value) {
     char buf[HI_SDS_LLSTR_SIZE];
     int len = hi_sdsll2str(buf,value);
@@ -507,13 +553,17 @@ hisds hi_sdsfromlonglong(long long value) {
 }
 
 /* Like hi_sdscatprintf() but gets va_list instead of being variadic. */
+// 格式化输入数据到 s上，s不足则扩展，扩展方式是 *2 倍
 hisds hi_sdscatvprintf(hisds s, const char *fmt, va_list ap) {
     va_list cpy;
     char staticbuf[1024], *buf = staticbuf, *t;
+    // 分配2被的缓冲区大小
     size_t buflen = strlen(fmt)*2;
 
     /* We try to start using a static buffer for speed.
      * If not possible we revert to heap allocation. */
+    // 如果 需求内存（实际大小的2倍） > 默认缓冲大小， 分配需求内存
+    // 否则 直接使用默认缓冲
     if (buflen > sizeof(staticbuf)) {
         buf = hi_s_malloc(buflen);
         if (buf == NULL) return NULL;
@@ -526,9 +576,11 @@ hisds hi_sdscatvprintf(hisds s, const char *fmt, va_list ap) {
     while(1) {
         buf[buflen-2] = '\0';
         va_copy(cpy,ap);
+        // 保存数据到buf
         vsnprintf(buf, buflen, fmt, cpy);
         va_end(cpy);
         if (buf[buflen-2] != '\0') {
+            // 长度越界，重新分配内存 新内存是原内存的2倍
             if (buf != staticbuf) hi_s_free(buf);
             buflen *= 2;
             buf = hi_s_malloc(buflen);
@@ -539,7 +591,9 @@ hisds hi_sdscatvprintf(hisds s, const char *fmt, va_list ap) {
     }
 
     /* Finally concat the obtained string to the SDS string and return it. */
+    // 把buf 追加到 s的剩余空间中
     t = hi_sdscat(s, buf);
+    // 内存在堆上， 释放之
     if (buf != staticbuf) hi_s_free(buf);
     return t;
 }
@@ -560,6 +614,7 @@ hisds hi_sdscatvprintf(hisds s, const char *fmt, va_list ap) {
  *
  * s = hi_sdscatprintf(hi_sdsempty(), "... your format ...", args);
  */
+// 格式化输出数据到s，返回 输出后的首地址
 hisds hi_sdscatprintf(hisds s, const char *fmt, ...) {
     va_list ap;
     char *t;
@@ -585,13 +640,17 @@ hisds hi_sdscatprintf(hisds s, const char *fmt, ...) {
  * %U - 64 bit unsigned integer (unsigned long long, uint64_t)
  * %% - Verbatim "%" character.
  */
+// 类似 hi_sdscatvprintf， 但扩展了一些新的标识符
 hisds hi_sdscatfmt(hisds s, char const *fmt, ...) {
     const char *f = fmt;
     int i;
     va_list ap;
 
     va_start(ap,fmt);
+    // 实际 s的buf内数据大小
     i = hi_sdslen(s); /* Position of the next byte to write to dest str. */
+    // 遍历每个字符
+    // 这里实现的就是类似 sprintf类似的功能
     while(*f) {
         char next, *str;
         size_t l;
@@ -599,11 +658,13 @@ hisds hi_sdscatfmt(hisds s, char const *fmt, ...) {
         unsigned long long unum;
 
         /* Make sure there is always space for at least 1 char. */
+        // 剩余空间不足， 则扩展之
         if (hi_sdsavail(s)==0) {
             s = hi_sdsMakeRoomFor(s,1);
             if (s == NULL) goto fmt_error;
         }
 
+        // 判断字符是否属于 规则内
         switch(*f) {
         case '%':
             next = *(f+1);
@@ -664,6 +725,7 @@ hisds hi_sdscatfmt(hisds s, char const *fmt, ...) {
             }
             break;
         default:
+            // 保存字符到s
             s[i++] = *f;
             hi_sdsinclen(s,1);
             break;
@@ -695,17 +757,23 @@ fmt_error:
  *
  * Output will be just "Hello World".
  */
+// 根据cset的每次字符来 过滤 s 首部和尾部
 hisds hi_sdstrim(hisds s, const char *cset) {
     char *start, *end, *sp, *ep;
     size_t len;
 
     sp = start = s;
     ep = end = s+hi_sdslen(s)-1;
+    // 首部偏移 过滤
     while(sp <= end && strchr(cset, *sp)) sp++;
+    // 尾部偏移过滤
     while(ep > sp && strchr(cset, *ep)) ep--;
+    // 计算剩余长度
     len = (sp > ep) ? 0 : ((ep-sp)+1);
+    // 剩余数据左移到收地址
     if (s != sp) memmove(s, sp, len);
     s[len] = '\0';
+    // 重设过滤后的 实际数据长度
     hi_sdssetlen(s,len);
     return s;
 }
@@ -730,19 +798,28 @@ hisds hi_sdstrim(hisds s, const char *cset) {
  * s = hi_sdsnew("Hello World");
  * hi_sdsrange(s,1,-1); => "ello World"
  */
+// 根据 start 和 end 截取 buf缓冲
+// 支持 负数
+// start 开始偏移
+// end 结束偏移
+// 如果 截取部分计算错误，比如 end < start ,就直接返回
 int hi_sdsrange(hisds s, ssize_t start, ssize_t end) {
     size_t newlen, len = hi_sdslen(s);
     if (len > SSIZE_MAX) return -1;
 
     if (len == 0) return 0;
     if (start < 0) {
+        // start < 0 ,从结尾开始
         start = len+start;
         if (start < 0) start = 0;
     }
     if (end < 0) {
+        // end <0, 表示结尾前的 N个字节
         end = len+end;
         if (end < 0) end = 0;
     }
+    // start 和end 正常设置。 截取正常
+    // 非正常设置， 直接清空缓冲区
     newlen = (start > end) ? 0 : (end-start)+1;
     if (newlen != 0) {
         if (start >= (ssize_t)len) {
@@ -761,6 +838,7 @@ int hi_sdsrange(hisds s, ssize_t start, ssize_t end) {
 }
 
 /* Apply tolower() to every character of the hisds string 's'. */
+// 转小写
 void hi_sdstolower(hisds s) {
     int len = hi_sdslen(s), j;
 
@@ -768,6 +846,7 @@ void hi_sdstolower(hisds s) {
 }
 
 /* Apply toupper() to every character of the hisds string 's'. */
+// 转大写
 void hi_sdstoupper(hisds s) {
     int len = hi_sdslen(s), j;
 
@@ -785,6 +864,7 @@ void hi_sdstoupper(hisds s) {
  * If two strings share exactly the same prefix, but one of the two has
  * additional characters, the longer string is considered to be greater than
  * the smaller one. */
+// 对比两个 hisds
 int hi_sdscmp(const hisds s1, const hisds s2) {
     size_t l1, l2, minlen;
     int cmp;
@@ -813,12 +893,14 @@ int hi_sdscmp(const hisds s1, const hisds s2) {
  * requires length arguments. hi_sdssplit() is just the
  * same function but for zero-terminated strings.
  */
+// 找出所有 s 中所有的sep并 返回
 hisds *hi_sdssplitlen(const char *s, int len, const char *sep, int seplen, int *count) {
     int elements = 0, slots = 5, start = 0, j;
     hisds *tokens;
 
     if (seplen < 1 || len < 0) return NULL;
 
+    // 创建一个 长度为5的 hisds数组
     tokens = hi_s_malloc(sizeof(hisds)*slots);
     if (tokens == NULL) return NULL;
 
@@ -826,9 +908,11 @@ hisds *hi_sdssplitlen(const char *s, int len, const char *sep, int seplen, int *
         *count = 0;
         return tokens;
     }
+    // (len-(seplen-1)); 防止越界
     for (j = 0; j < (len-(seplen-1)); j++) {
         /* make sure there is room for the next element and the final one */
         if (slots < elements+2) {
+            // 如果 slots 不够，则扩展 tokens
             hisds *newtokens;
 
             slots *= 2;
@@ -837,11 +921,17 @@ hisds *hi_sdssplitlen(const char *s, int len, const char *sep, int seplen, int *
             tokens = newtokens;
         }
         /* search the separator */
+        // 对比 sep 是否属于 s的某一段
         if ((seplen == 1 && *(s+j) == sep[0]) || (memcmp(s+j,sep,seplen) == 0)) {
+            // 截取 sep相同的 字符串 存入 tokens[elements]
+            // s+start， 从哪开始截取， start记录上一次截取位置的偏移
+            // j-start， 截取长度， j-start 表示从上一次截断后的位置开算计算长度
             tokens[elements] = hi_sdsnewlen(s+start,j-start);
             if (tokens[elements] == NULL) goto cleanup;
             elements++;
+            // 记录下次从哪开始截取
             start = j+seplen;
+            // 记录下次检测的位置
             j = j+seplen-1; /* skip the separator */
         }
     }
@@ -863,6 +953,7 @@ cleanup:
 }
 
 /* Free the result returned by hi_sdssplitlen(), or do nothing if 'tokens' is NULL. */
+// 释放token
 void hi_sdsfreesplitres(hisds *tokens, int count) {
     if (!tokens) return;
     while(count--)
@@ -876,20 +967,25 @@ void hi_sdsfreesplitres(hisds *tokens, int count) {
  *
  * After the call, the modified hisds string is no longer valid and all the
  * references must be substituted with the new pointer returned by the call. */
+// 格式化输出到s， 并处理转义字符，使之正确显示
+// 输出 "xxx"这样的字符串
 hisds hi_sdscatrepr(hisds s, const char *p, size_t len) {
     s = hi_sdscatlen(s,"\"",1);
     while(len--) {
         switch(*p) {
         case '\\':
         case '"':
+            // 转移
             s = hi_sdscatprintf(s,"\\%c",*p);
             break;
+            // 不转移，直接输出换行等
         case '\n': s = hi_sdscatlen(s,"\\n",2); break;
         case '\r': s = hi_sdscatlen(s,"\\r",2); break;
         case '\t': s = hi_sdscatlen(s,"\\t",2); break;
         case '\a': s = hi_sdscatlen(s,"\\a",2); break;
         case '\b': s = hi_sdscatlen(s,"\\b",2); break;
         default:
+            // 正常输出字符
             if (isprint(*p))
                 s = hi_sdscatprintf(s,"%c",*p);
             else
@@ -944,6 +1040,7 @@ static int hi_hex_digit_to_int(char c) {
  * quotes or closed quotes followed by non space characters
  * as in: "foo"bar or "foo'
  */
+// 把 line 转成字符串，处理一些特殊字符，比如\n之类的进行转义
 hisds *hi_sdssplitargs(const char *line, int *argc) {
     const char *p = line;
     char *current = NULL;
@@ -967,7 +1064,7 @@ hisds *hi_sdssplitargs(const char *line, int *argc) {
                                              isxdigit(*(p+3)))
                     {
                         unsigned char byte;
-
+                        // 16 禁止转 int
                         byte = (hi_hex_digit_to_int(*(p+2))*16)+
                                 hi_hex_digit_to_int(*(p+3));
                         current = hi_sdscatlen(current,(char*)&byte,1);
@@ -1071,6 +1168,7 @@ err:
  *
  * The function returns the hisds string pointer, that is always the same
  * as the input pointer since no resize is needed. */
+// 查找s中 from 的每个字符串，用 to替换， 很奇怪的一个方法
 hisds hi_sdsmapchars(hisds s, const char *from, const char *to, size_t setlen) {
     size_t j, i, l = hi_sdslen(s);
 
@@ -1087,6 +1185,7 @@ hisds hi_sdsmapchars(hisds s, const char *from, const char *to, size_t setlen) {
 
 /* Join an array of C strings using the specified separator (also a C string).
  * Returns the result as an hisds string. */
+//拼接成这样的字符串。。  argv[0] sep argv[1] sep  argv[2]
 hisds hi_sdsjoin(char **argv, int argc, char *sep) {
     hisds join = hi_sdsempty();
     int j;
@@ -1099,6 +1198,7 @@ hisds hi_sdsjoin(char **argv, int argc, char *sep) {
 }
 
 /* Like hi_sdsjoin, but joins an array of SDS strings. */
+// 跟 hi_sdsjoin 类似， 不一样的地方在于 扩展字符串的大小
 hisds hi_sdsjoinsds(hisds *argv, int argc, const char *sep, size_t seplen) {
     hisds join = hi_sdsempty();
     int j;

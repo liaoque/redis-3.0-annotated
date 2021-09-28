@@ -8295,7 +8295,10 @@ int main(int argc, char **argv) {
 //    parseRedisUri("redis://127.0.0.1:3306/1");
 //    parseRedisUri("redis://127.0.0.1:3306/");
 
-
+//    hisds s = hi_sdsnew("foobar");
+//     s[2] = '\0';
+//     hi_sdsupdatelen(s);
+//     printf("%d\n", hi_sdslen(s));
 
 //    printf("%lld", strtoll("q0xaq", NULL, 16));
 //    exit(0);
