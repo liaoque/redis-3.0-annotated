@@ -79,21 +79,33 @@ int cliSecureConnection(redisContext *c, cliSSLconfig config, const char **err) 
                 goto error;
             }
         }
-
+        
+        // 为服务端指定SSL连接所用公钥证书的完整证书链
+        //参数 m_pServerCtx，服务端SSL会话环境
+        //参数 pCertPath，你存放证书链文件的路径
         if (config.cert && !SSL_CTX_use_certificate_chain_file(ssl_ctx, config.cert)) {
             *err = "Invalid client certificate";
             goto error;
         }
 
+        // 为服务端指定SSL连接所用私钥
+        //参数 m_pServerCtx，服务端SSL会话环境
+        //参数 pKeyPath，你存放对应私钥文件的路径
+        //参数 SSL_FILETYPE_PEM，指定你所要加载的私钥文件的文件编码类型为 Base64
         if (config.key && !SSL_CTX_use_PrivateKey_file(ssl_ctx, config.key, SSL_FILETYPE_PEM)) {
             *err = "Invalid private key";
             goto error;
         }
+
+        // 根据SSL/TLS规范,在ClientHello中,客户端会提交一份自己能够支持的加密方法的列表,由服务端选择一种方法后在ServerHello中通知服务端, 从而完成加密算法的协商.
+        // 这些算法按一定优先级排列,如果不作任何指定,将选用DES-CBC3-SHA.用SSL_CTX_set_cipher_list可以指定自己希望用的算法
         if (config.ciphers && !SSL_CTX_set_cipher_list(ssl_ctx, config.ciphers)) {
             *err = "Error while configuring ciphers";
             goto error;
         }
+
 #ifdef TLS1_3_VERSION
+        // 设置密码套件
         if (config.ciphersuites && !SSL_CTX_set_ciphersuites(ssl_ctx, config.ciphersuites)) {
             *err = "Error while setting cypher suites";
             goto error;
@@ -107,6 +119,7 @@ int cliSecureConnection(redisContext *c, cliSSLconfig config, const char **err) 
         return REDIS_ERR;
     }
 
+    // 设置 域名
     if (config.sni && !SSL_set_tlsext_host_name(ssl, config.sni)) {
         *err = "Failed to configure SNI";
         SSL_free(ssl);
