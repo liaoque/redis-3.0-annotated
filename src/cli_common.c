@@ -54,14 +54,26 @@ int cliSecureConnection(redisContext *c, cliSSLconfig config, const char **err) 
             goto error;
         }
         SSL_CTX_set_options(ssl_ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
+        //        SSL_VERIFY_NONE：完全忽略验证证书的结果。当握手必须完成的话，就选中这个选项。
+        //        其实真正有证书的人很少，尤其是在中国，那么如果 SSL 运用于一些免费的服务，
+        //        比如 EMAIL 的时候，SERVER 端最好采用这个模式。
+
+
+//        SSL_VERIFY_PEER：希望验证对方的证书。这个是最一般的模式。
+//        对 CLIENT 来说，如果设置了这样的模式，验证SERVER的证书出了任何错误，SSL 握手都告吹。
+//        对 SERVER 来说,如果设置了这样的模式，CLIENT 倒不一定要把自己的证书交出去。
+//        如果 CLIENT 没有交出证书，SERVER 自己决定下一步怎么做。
+
         SSL_CTX_set_verify(ssl_ctx, config.skip_cert_verify ? SSL_VERIFY_NONE : SSL_VERIFY_PEER, NULL);
 
         if (config.cacert || config.cacertdir) {
+            // 从指定地址读取证书并验证
             if (!SSL_CTX_load_verify_locations(ssl_ctx, config.cacert, config.cacertdir)) {
                 *err = "Invalid CA Certificate File/Directory";
                 goto error;
             }
         } else {
+            // 从默认地址读取
             if (!SSL_CTX_set_default_verify_paths(ssl_ctx)) {
                 *err = "Failed to use default CA paths";
                 goto error;
