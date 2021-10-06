@@ -37,7 +37,9 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <hiredis_ssl.h>
+
 #endif
+
 
 
 /* Wrapper around redisSecureConnection to avoid hiredis_ssl dependencies if
@@ -53,6 +55,8 @@ int cliSecureConnection(redisContext *c, cliSSLconfig config, const char **err) 
             *err = "Failed to create SSL_CTX";
             goto error;
         }
+
+
         SSL_CTX_set_options(ssl_ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
         //        SSL_VERIFY_NONE：完全忽略验证证书的结果。当握手必须完成的话，就选中这个选项。
         //        其实真正有证书的人很少，尤其是在中国，那么如果 SSL 运用于一些免费的服务，
@@ -65,7 +69,6 @@ int cliSecureConnection(redisContext *c, cliSSLconfig config, const char **err) 
 //        如果 CLIENT 没有交出证书，SERVER 自己决定下一步怎么做。
 
         SSL_CTX_set_verify(ssl_ctx, config.skip_cert_verify ? SSL_VERIFY_NONE : SSL_VERIFY_PEER, NULL);
-
         if (config.cacert || config.cacertdir) {
             // 从指定地址读取证书并验证
             if (!SSL_CTX_load_verify_locations(ssl_ctx, config.cacert, config.cacertdir)) {
@@ -97,7 +100,8 @@ int cliSecureConnection(redisContext *c, cliSSLconfig config, const char **err) 
             goto error;
         }
 
-        // 根据SSL/TLS规范,在ClientHello中,客户端会提交一份自己能够支持的加密方法的列表,由服务端选择一种方法后在ServerHello中通知服务端, 从而完成加密算法的协商.
+        // 根据SSL/TLS规范,在ClientHello中,客户端会提交一份自己能够支持的加密方法的列表,
+        // 由服务端选择一种方法后在ServerHello中通知服务端, 从而完成加密算法的协商.
         // 这些算法按一定优先级排列,如果不作任何指定,将选用DES-CBC3-SHA.用SSL_CTX_set_cipher_list可以指定自己希望用的算法
         if (config.ciphers && !SSL_CTX_set_cipher_list(ssl_ctx, config.ciphers)) {
             *err = "Error while configuring ciphers";
